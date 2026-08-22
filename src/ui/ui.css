@@ -87,6 +87,23 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 .chip.off::after{content:'';position:absolute;left:5px;right:5px;top:50%;
   height:1px;background:currentColor;transform:rotate(-20deg)}
 
+/* ── command palette ── */
+.palettewrap{position:absolute;inset:0;background:rgba(0,0,0,.45);display:none;
+  align-items:flex-start;justify-content:center;z-index:90}
+.palettewrap.open{display:flex}
+.palette{margin-top:12vh;width:min(560px,86vw);background:var(--panel);
+  border:1px solid var(--bd);border-radius:14px;overflow:hidden;
+  box-shadow:0 24px 60px rgba(0,0,0,.6)}
+.palette input{width:100%;box-sizing:border-box;background:none;border:none;outline:none;
+  color:var(--txt);font-size:15px;padding:14px 16px;border-bottom:1px solid var(--bd)}
+.plist{max-height:min(420px,60vh);overflow:auto}
+.pcmd{display:flex;align-items:center;gap:10px;padding:9px 16px;cursor:pointer}
+.pcmd.sel,.pcmd:hover{background:var(--panel2)}
+.pcmd .pi{width:18px;text-align:center;flex:none;opacity:.85}
+.pcmd .pn{flex:1;font-size:13px}
+.pcmd .pk{font-size:11px;color:var(--mut);flex:none}
+.pempty{padding:16px;color:var(--mut);font-size:13px}
+
 /* ── omnibar suggestions ── */
 /* Sits under the address bar. The chrome view is grown to full window while
    this is open (same mechanism the panels use), otherwise it would be clipped

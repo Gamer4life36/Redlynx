@@ -527,6 +527,9 @@ function createTab(url, opts) {
     else if (ctrl && k === 't') { createTab(newTabUrl(), {}); e.preventDefault(); }
     else if (ctrl && k === 'w') { closeTab(id); e.preventDefault(); }
     else if (ctrl && k === 'l') { sendUI('focus-url', {}); e.preventDefault(); }
+    // Ctrl+K reaches the chrome even while the page holds focus, which is the
+    // whole point of a palette: it has to work from wherever you are.
+    else if (ctrl && k === 'k') { sendUI('palette', {}); e.preventDefault(); }
     else if (k === 'f5') { wc.reload(); e.preventDefault(); }
     else if (k === 'f11') {
       if (fullscreenTabId === id) leaveFullscreen(id); else enterFullscreen(id);
@@ -780,6 +783,11 @@ function startDebugServer() {
                      + '  [len ' + src.length + ']';
           }),
         });
+      }
+      if (req.url === '/emit') {
+        const b = await body(req);
+        sendUI(String(b.channel || ''), b.payload || {});
+        return send(res, 200, { ok: true, sent: b.channel });
       }
       if (req.url === '/gpu') {
         return send(res, 200, {

@@ -137,6 +137,7 @@ contextBridge.exposeInMainWorld('redlynx', {
   onOpenFind: on('open-find'),
   onDoBookmark: on('do-bookmark'),
   onOpenPanel: on('open-panel'),
+  onPalette: on('palette'),
   // Tell the browser the chrome is drawing over the page, so its view can be
   // grown to full size and raised above it.
   setOverlay: (on) => ipcRenderer.send('ui:overlay', !!on),

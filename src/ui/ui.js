@@ -205,6 +205,7 @@ function syncOverlay() {
   const shown = PANELS.some((p) => $(p).classList.contains('open')) ||
                 $('promptWrap').classList.contains('open') ||
                 $('omniDrop').classList.contains('open') ||
+                $('paletteWrap').classList.contains('open') ||
                 $('findbar').classList.contains('on');
   try { api.setOverlay(shown); } catch (e) {}
 }
@@ -406,6 +407,124 @@ async function refreshSettings() {
   });
 }
 $('clearData').onclick = async () => { await api.clearBrowsingData(); toast('Cookies and cache cleared.'); };
+
+// ── command palette ───────────────────────────────────────────────
+// Everything the toolbar can do, reachable without knowing where it lives or
+// whether it happens to be pinned. Ctrl+K works from the page too, because a
+// palette you can only open when the chrome has focus is not much of one.
+function commands() {
+  return [
+    { icon: '🗋', name: 'New tab', key: 'Ctrl+T', run: () => api.newTab() },
+    { icon: '🕶', name: 'New private tab', key: 'Ctrl+Shift+N', run: () => api.newPrivateTab() },
+    { icon: '✕', name: 'Close tab', key: 'Ctrl+W', run: () => api.closeTab(state.activeId) },
+    { icon: '⟳', name: 'Reload page', key: 'F5', run: () => api.reload() },
+    { icon: '⌂', name: 'Home', run: () => api.home() },
+    { icon: '🔎', name: 'Find on page', key: 'Ctrl+F', run: () => openFind() },
+    { icon: '💤', name: 'Suspend other tabs', run: async () => { await api.suspendOthers(); toast('Other tabs suspended.'); } },
+    { icon: '⚙', name: 'Settings', run: () => openPanel('panelSettings') },
+    { icon: '🛡', name: 'Protection', run: () => openPanel('panelShield') },
+    { icon: '📥', name: 'Downloads', key: 'Ctrl+J', run: () => openPanel('panelDownloads') },
+    { icon: '🕘', name: 'History', key: 'Ctrl+H', run: () => openPanel('panelHistory') },
+    { icon: '★', name: 'Favorites', run: () => openPanel('panelFavs') },
+    { icon: '⬇', name: 'Media on this page', run: () => openPanel('panelMedia') },
+    { icon: '🎛', name: 'Control — CPU, RAM & network limits', run: () => openPanel('panelGX') },
+    { icon: '🕵', name: 'Anonymity — proxy & encrypted DNS', run: () => openPanel('panelAnon') },
+    { icon: '⧉', name: 'Pop out video (picture-in-picture)', run: () => api.popOut() },
+    { icon: '✦', name: (prefs.hideAiOverview !== false ? 'Show' : 'Hide') + " Google's AI Overview",
+      run: () => $('btnAio').click() },
+    { icon: '↻', name: 'Refresh filter lists', run: () => $('refreshLists').click() },
+    { icon: '⬆', name: 'Check for updates', run: () => { openPanel('panelSettings'); setTimeout(() => $('updCheck').click(), 200); } },
+  ];
+}
+
+let palCmds = [];
+let palSel = 0;
+
+function paletteOpen() {
+  palCmds = commands();
+  palSel = 0;
+  $('paletteInput').value = '';
+  renderPalette();
+  $('paletteWrap').classList.add('open');
+  syncOverlay();
+  $('paletteInput').focus();
+}
+
+function paletteClose() {
+  $('paletteWrap').classList.remove('open');
+  syncOverlay();
+}
+
+function filterCmds(q) {
+  const s = q.toLowerCase().trim();
+  if (!s) return commands();
+  // Every letter in order, not necessarily adjacent — "nprv" finds "New private tab".
+  return commands().filter((c) => {
+    const n = c.name.toLowerCase();
+    let i = 0;
+    for (const ch of s) {
+      i = n.indexOf(ch, i);
+      if (i === -1) return false;
+      i++;
+    }
+    return true;
+  });
+}
+
+function renderPalette() {
+  const host = $('paletteList');
+  host.innerHTML = '';
+  if (!palCmds.length) {
+    host.innerHTML = '<div class="pempty">Nothing matches.</div>';
+    return;
+  }
+  palCmds.forEach((c, i) => {
+    const row = document.createElement('div');
+    row.className = 'pcmd' + (i === palSel ? ' sel' : '');
+    row.innerHTML = '<div class="pi"></div><div class="pn"></div><div class="pk"></div>';
+    row.querySelector('.pi').textContent = c.icon || '›';
+    row.querySelector('.pn').textContent = c.name;
+    row.querySelector('.pk').textContent = c.key || '';
+    row.addEventListener('mousedown', (e) => { e.preventDefault(); runCmd(c); });
+    host.appendChild(row);
+  });
+}
+
+function runCmd(c) {
+  paletteClose();
+  try { c.run(); } catch (e) {}
+}
+
+$('paletteInput').addEventListener('input', () => {
+  palCmds = filterCmds($('paletteInput').value);
+  palSel = 0;
+  renderPalette();
+});
+
+$('paletteInput').addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    palSel += e.key === 'ArrowDown' ? 1 : -1;
+    if (palSel < 0) palSel = palCmds.length - 1;
+    if (palSel >= palCmds.length) palSel = 0;
+    renderPalette();
+    return;
+  }
+  if (e.key === 'Enter') { if (palCmds[palSel]) runCmd(palCmds[palSel]); return; }
+  if (e.key === 'Escape') paletteClose();
+});
+
+$('paletteWrap').addEventListener('mousedown', (e) => {
+  if (e.target === $('paletteWrap')) paletteClose();
+});
+
+api.onPalette(() => paletteOpen());
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    if ($('paletteWrap').classList.contains('open')) paletteClose(); else paletteOpen();
+  }
+});
 
 // ── site permissions ──────────────────────────────────────────────
 const PERM_NAMES = {
