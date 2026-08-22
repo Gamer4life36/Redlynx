@@ -1,0 +1,343 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: redlynx:;">
+  <title>Redlynx</title>
+  <link rel="stylesheet" href="ui.css">
+</head>
+<body>
+  <div id="chromeBg"></div>
+  <!-- tab strip -->
+  <div class="tabstrip" id="tabstrip">
+    <div class="tabs" id="tabs"></div>
+    <button class="newtab" id="newtab" title="New tab (Ctrl+T)">+</button>
+    <div class="spacer"></div>
+    <button class="chip" id="btnSuspendOthers" data-tool="suspend" title="Suspend every other tab to free memory">💤 Suspend others</button>
+  </div>
+
+  <!-- omnibar -->
+  <div class="omnibar">
+    <button class="nav" id="back" title="Back">‹</button>
+    <button class="nav" id="forward" title="Forward">›</button>
+    <button class="nav" id="reload" title="Reload">⟳</button>
+    <button class="nav" id="home" title="Home"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.6 12 3.4l9 7.2"/><path d="M5.6 9.6V20h12.8V9.6"/></svg></button>
+
+    <div class="urlwrap">
+      <span class="lock" id="lock" title="Connection">🔒</span>
+      <input id="url" spellcheck="false" autocomplete="off" placeholder="Search, or enter an address">
+      <button class="inline" id="shield" data-tool="shield" title="Ads &amp; trackers blocked on this page">🛡 <span id="blockCount">0</span></button>
+      <button class="inline grab" id="grabBtn" data-tool="media" title="Download media from this page">⬇ <span id="mediaCount">0</span></button>
+      <button class="inline star" id="btnStar" title="Save to favorites">☆</button>
+    </div>
+
+    <button class="chip" id="btnPop" data-tool="pop" title="Pop out video (picture-in-picture)">⧉</button>
+    <button class="chip" id="btnGX" data-tool="gx" title="Control — CPU, RAM &amp; network limiters">🎛</button>
+    <button class="chip" id="btnAI" data-tool="ai" title="AI assistant">✨</button>
+    <button class="chip" id="btnFavs" data-tool="favorites" title="Favorites">★</button>
+    <button class="chip" id="btnHistory" data-tool="history" title="History (Ctrl+H)">🕘</button>
+    <button class="chip" id="btnAnon" data-tool="anon" title="Anonymity — proxy, encrypted DNS, private tab">🕵</button>
+    <button class="chip" id="btnAio" data-tool="aioverview" title="Google AI Overview">✦</button>
+    <button class="chip" id="btnDownloads" data-tool="downloads" title="Downloads">📥</button>
+    <button class="chip" id="btnShield" title="Protection settings">🛡</button>
+    <button class="chip" id="btnSettings" title="Settings">⚙</button>
+  </div>
+
+  <!-- find in page -->
+  <div class="findbar" id="findbar">
+    <span class="fi">🔎</span>
+    <input id="findInput" placeholder="Find on page" spellcheck="false" autocomplete="off">
+    <span class="fcount" id="findCount"></span>
+    <button class="fbtn" id="findPrev" title="Previous (Shift+Enter)">˄</button>
+    <button class="fbtn" id="findNext" title="Next (Enter)">˅</button>
+    <button class="fbtn" id="findClose" title="Close (Esc)">✕</button>
+  </div>
+
+  <!-- bookmarks bar -->
+  <div class="bmbar" id="bmbar">
+    <div class="bmitems" id="bmItems"></div>
+    <button class="bmnew" id="bmNewFolder" title="New folder">📁+</button>
+  </div>
+  <div class="bmmenu" id="bmMenu"></div>
+
+  <!-- panels -->
+  <div class="panel" id="panelDownloads">
+    <div class="phead">
+      <b>Downloads</b>
+      <span class="mut" id="dlDir"></span>
+      <button class="x" data-close>✕</button>
+    </div>
+    <div class="pbody" id="dlList"><div class="mut pad">Nothing downloaded yet.</div></div>
+    <div class="pfoot"><button class="btn" id="openDlDir">Open folder</button></div>
+  </div>
+
+  <div class="panel" id="panelMedia">
+    <div class="phead">
+      <b>Media on this page</b>
+      <button class="x" data-close>✕</button>
+    </div>
+    <div class="pbody" id="mediaList"></div>
+    <div class="pfoot">
+      <button class="btn accent" id="grabPage">⬇ Grab this page's video</button>
+    </div>
+  </div>
+
+  <div class="panel" id="panelShield">
+    <div class="phead"><b>Protection</b><button class="x" data-close>✕</button></div>
+    <div class="pbody">
+      <label class="row"><input type="checkbox" data-pref="blockAds"> <span>Block ads</span></label>
+      <label class="row"><input type="checkbox" data-pref="blockTrackers"> <span>Block trackers</span></label>
+      <label class="row"><input type="checkbox" data-pref="blockThirdPartyCookies"> <span>Block third-party cookies</span></label>
+      <label class="row"><input type="checkbox" data-pref="httpsOnly"> <span>Prefer HTTPS</span></label>
+      <label class="row"><input type="checkbox" data-pref="cleanPages"> <span>Clean pages (hide footers &amp; sticky bars)</span></label>
+      <label class="row"><input type="checkbox" data-us="classicImages"> <span>Classic Google Images (expand inline)</span></label>
+      <div class="hint">Clicking a result expands it right under that row at full size,
+        instead of Google's cramped side panel.</div>
+      <label class="row"><input type="checkbox" data-pref="hideAiOverview"> <span>Hide Google's AI Overview</span></label>
+      <div class="hint">It streams in after the page loads and pushes the real results down the
+        screen while you wait. Hidden, the results sit at the top immediately.</div>
+      <label class="row"><input type="checkbox" data-us="maxQuality"> <span>Always play video at the highest quality</span></label>
+      <div class="hint">Pins the player to the best level the video offers, from the first
+        frame, instead of starting low and climbing. This also stops it dropping back down —
+        turn it off if your connection cannot hold 4K.</div>
+      <div class="sep"></div>
+      <label class="row"><input type="checkbox" data-pref="askBeforeSaving"> <span>Ask before saving passwords or cards</span></label>
+      <div class="hint">Nothing sensitive is ever written to disk unless you say yes.</div>
+      <div class="sep"></div>
+      <div class="row"><b id="shieldTotal">0</b><span class="mut">items blocked on this page</span></div>
+      <div class="sep"></div>
+      <div class="row"><b>Filter lists</b></div>
+      <div class="hint" id="listStatus">…</div>
+      <div class="hint">YouTube fights blockers constantly. If ads reappear there,
+        refresh the lists — uBlock Origin ships counter-patches within hours.</div>
+      <div class="row" style="gap:8px">
+        <button class="btn" id="refreshLists">↻ Refresh filter lists</button>
+        <button class="btn" id="clearData">Clear cookies &amp; cache</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="panelAnon">
+    <div class="phead"><b>🕵 Anonymity</b><button class="x" data-close>✕</button></div>
+    <div class="pbody">
+      <button class="btn accent" id="newPrivate" style="width:100%">🕶 New private tab &nbsp;<span class="mut" style="color:inherit;opacity:.75">Ctrl+Shift+N</span></button>
+      <div class="hint">A private tab keeps its cookies, cache and storage in memory only,
+        records no history, and is wiped the moment you close it.</div>
+      <div class="sep"></div>
+
+      <div class="row"><b>Proxy routing</b></div>
+      <label class="row"><input type="checkbox" data-pref="proxyEnabled"> <span>Route traffic through a proxy</span></label>
+      <div class="row">
+        <span class="mut">Mode</span>
+        <select class="num sel" data-pref="proxyMode">
+          <option value="manual">Manual</option>
+          <option value="tor">Tor (local, 127.0.0.1:9050)</option>
+        </select>
+      </div>
+      <div class="row" id="proxyManual">
+        <select class="num" data-pref="proxyScheme" style="min-width:88px">
+          <option value="socks5">SOCKS5</option>
+          <option value="http">HTTP</option>
+          <option value="https">HTTPS</option>
+        </select>
+        <input class="num" style="flex:1" data-pref="proxyHost" placeholder="host">
+        <input class="num" style="width:74px" data-pref="proxyPort" placeholder="port">
+      </div>
+      <div class="hint">Browser traffic only — this is not a system-wide VPN.</div>
+      <div class="sep"></div>
+
+      <div class="row"><b>Encrypted DNS</b></div>
+      <label class="row"><input type="checkbox" data-pref="dohEnabled"> <span>DNS-over-HTTPS</span></label>
+      <div class="row">
+        <span class="mut">Resolver</span>
+        <select class="num sel" data-pref="dohProvider" id="dohSel"></select>
+      </div>
+      <div class="hint">Stops your ISP seeing every domain you visit.</div>
+      <div class="sep"></div>
+
+      <div class="row"><b>Leak protection</b></div>
+      <label class="row"><input type="checkbox" data-pref="blockWebRTC"> <span>Block WebRTC IP leaks</span></label>
+      <div class="hint">WebRTC can reveal your real IP straight past a proxy — this is how
+        most "anonymous" setups quietly fail. Leave this on.</div>
+      <div class="sep"></div>
+
+      <div class="row">
+        <button class="btn" id="anonApply">Apply</button>
+        <button class="btn" id="anonCheck">What IP do sites see?</button>
+      </div>
+      <div class="hint" id="anonResult"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panelHistory">
+    <div class="phead"><b>🕘 History</b><button class="x" data-close>✕</button></div>
+    <div class="pbody">
+      <input id="histSearch" class="num" style="width:100%;margin-bottom:8px" placeholder="Search history…" spellcheck="false">
+      <div id="histList"></div>
+    </div>
+    <div class="pfoot">
+      <button class="btn" data-clear="3600000">Clear last hour</button>
+      <button class="btn" data-clear="86400000">Last day</button>
+      <button class="btn" data-clear="0">Clear all</button>
+    </div>
+  </div>
+
+  <div class="panel" id="panelFavs">
+    <div class="phead"><b>★ Favorites</b><button class="x" data-close>✕</button></div>
+    <div class="pbody" id="favList"></div>
+    <div class="pfoot"><button class="btn accent" id="favAdd">☆ Save this page</button></div>
+  </div>
+
+  <div class="panel" id="panelGX">
+    <div class="phead"><b>🎛 Control</b><span class="mut" id="gxMem"></span><button class="x" data-close>✕</button></div>
+    <div class="pbody">
+      <div class="lim">
+        <div class="limhead"><span>CPU limit</span><b id="cpuVal">100%</b></div>
+        <input type="range" min="10" max="100" step="5" data-pref="cpuLimit" id="cpuRange">
+        <div class="hint">Caps how much processor speed pages may use — keeps a heavy site from stealing your game's frames.</div>
+      </div>
+      <div class="lim">
+        <div class="limhead"><span>RAM limit</span><b id="ramVal">Off</b></div>
+        <input type="range" min="0" max="8000" step="250" data-pref="ramLimit" id="ramRange">
+        <div class="hint">When the browser crosses this, the oldest idle tabs are suspended automatically.</div>
+      </div>
+      <div class="lim">
+        <div class="limhead"><span>Network limit</span><b id="netVal">Unlimited</b></div>
+        <input type="range" min="0" max="100" step="1" data-pref="netLimit" id="netRange">
+        <div class="hint">Caps bandwidth per tab so a download never lags your match.</div>
+      </div>
+      <div class="sep"></div>
+      <label class="row"><input type="checkbox" data-pref="forceDark"> <span>Force dark pages</span></label>
+      <label class="row"><input type="checkbox" data-pref="uiSounds"> <span>Browser sounds</span></label>
+      <div class="sep"></div>
+      <div class="row"><b>Hot tabs</b><span class="mut">what's eating your machine</span></div>
+      <div id="hotList"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panelAI">
+    <div class="phead"><b>✨ AI assistant</b><button class="x" data-close>✕</button></div>
+    <div class="pbody" id="aiBody"></div>
+    <div class="pfoot">
+      <button class="btn accent" id="aiSummarize">Summarise this page</button>
+      <button class="btn" id="aiSettings">Settings</button>
+    </div>
+  </div>
+
+  <div class="panel" id="panelSettings">
+    <div class="phead"><b>Settings</b><button class="x" data-close>✕</button></div>
+    <div class="pbody">
+      <div class="row"><b>Search &amp; startup</b></div>
+      <div class="row">
+        <span class="mut">Search engine</span>
+        <select class="num sel" data-pref="searchEngine" id="engineSel"></select>
+      </div>
+      <div class="row">
+        <span class="mut">Home page</span>
+        <input class="num" style="flex:1" data-pref="homePage" placeholder="(search engine home)">
+      </div>
+      <div class="row">
+        <span class="mut">Page zoom</span>
+        <button class="btn mini" id="zoomOut">−</button>
+        <b id="zoomVal">100%</b>
+        <button class="btn mini" id="zoomIn">+</button>
+        <button class="btn mini" id="zoomReset">Reset</button>
+      </div>
+      <div class="row">
+        <button class="btn" id="importBm">⇪ Import bookmarks from Chrome/Edge</button>
+      </div>
+      <div class="sep"></div>
+      <div class="row"><b>Toolbar</b><span class="mut">pin what you actually use</span></div>
+      <div class="pins">
+        <label class="row"><input type="checkbox" data-pin="favorites"> <span>★ Favorites</span><button class="btn mini" data-open="panelFavs">Open</button></label>
+        <label class="row"><input type="checkbox" data-pin="history"> <span>🕘 History</span><button class="btn mini" data-open="panelHistory">Open</button></label>
+        <label class="row"><input type="checkbox" data-pin="anon"> <span>🕵 Anonymity</span><button class="btn mini" data-open="panelAnon">Open</button></label>
+        <label class="row"><input type="checkbox" data-pin="aioverview"> <span>✦ Google AI Overview on/off</span></label>
+      <label class="row"><input type="checkbox" data-pin="downloads"> <span>📥 Downloads</span><button class="btn mini" data-open="panelDownloads">Open</button></label>
+        <label class="row"><input type="checkbox" data-pin="gx"> <span>🎛 Control</span><button class="btn mini" data-open="panelGX">Open</button></label>
+        <label class="row"><input type="checkbox" data-pin="ai"> <span>✨ AI assistant</span><button class="btn mini" data-open="panelAI">Open</button></label>
+        <label class="row"><input type="checkbox" data-pin="media"> <span>⬇ Media on page</span><button class="btn mini" data-open="panelMedia">Open</button></label>
+        <label class="row"><input type="checkbox" data-pin="shield"> <span>🛡 Blocked counter</span><button class="btn mini" data-open="panelShield">Open</button></label>
+        <label class="row"><input type="checkbox" data-pin="pop"> <span>⧉ Pop-out video</span></label>
+        <label class="row"><input type="checkbox" data-pin="suspend"> <span>💤 Suspend others</span></label>
+      </div>
+      <div class="hint">Unpinned tools still work — open them from here, or with their shortcuts (Ctrl+J downloads).</div>
+      <div class="sep"></div>
+      <label class="row"><input type="checkbox" data-pref="showBookmarksBar"> <span>Show bookmarks bar</span></label>
+      <div class="hint">Star a page to add it. Right-click anything on the bar to rename, delete, or file it into a folder.</div>
+      <div class="sep"></div>
+      <div class="row"><b>Appearance</b></div>
+      <div class="row">
+        <span class="mut">Theme</span>
+        <select class="num sel" data-pref="theme">
+          <option value="dark">Dark</option>
+          <option value="midnight">Midnight (OLED black)</option>
+          <option value="light">Light</option>
+          <option value="rgb">RGB (animated rainbow)</option>
+        </select>
+      </div>
+      <div class="row"><b>Background</b><span class="mut">image or GIF</span></div>
+      <div class="row">
+        <button class="btn" id="bgPick">🖼 Choose image / GIF…</button>
+        <button class="btn mini" id="bgClear">Clear</button>
+      </div>
+      <div class="row"><span class="mut">Show behind</span>
+        <label class="row" style="padding:0"><input type="checkbox" data-pref="bgApplyChrome"> <span>Toolbar</span></label>
+        <label class="row" style="padding:0"><input type="checkbox" data-pref="bgApplyNewTab"> <span>New tab</span></label>
+      </div>
+      <div class="lim">
+        <div class="limhead"><span>Strength</span><b id="bgOpacityVal">45%</b></div>
+        <input type="range" min="5" max="100" step="5" data-pref="bgOpacity" id="bgOpacityRange">
+      </div>
+      <div class="lim">
+        <div class="limhead"><span>Blur</span><b id="bgBlurVal">0px</b></div>
+        <input type="range" min="0" max="24" step="1" data-pref="bgBlur" id="bgBlurRange">
+      </div>
+      <div class="row">
+        <span class="mut">New tab shows</span>
+        <select class="num sel" data-pref="newTabMode">
+          <option value="redlynx">Redlynx page (background + top sites)</option>
+          <option value="home">My home page</option>
+        </select>
+      </div>
+      <div class="sep"></div>
+      <div class="row">
+        <span class="mut">Accent</span>
+        <input type="color" class="swatch" data-pref="accent">
+        <button class="btn" id="resetAccent">Reset</button>
+      </div>
+      <div class="sep"></div>
+      <label class="row"><input type="checkbox" data-pref="suspendIdleTabs"> <span>Suspend idle tabs to save memory</span></label>
+      <label class="row"><span>Suspend after</span> <input class="num" type="number" min="1" max="240" data-pref="suspendAfterMin"> <span class="mut">minutes</span></label>
+      <div class="sep"></div>
+      <div class="row"><span class="mut">Downloads go to</span></div>
+      <div class="row"><code id="dlDir2" class="path"></code></div>
+      <div class="sep"></div>
+      <div class="row"><b>Saved logins</b></div>
+      <div id="vaultList" class="mut">None saved.</div>
+      <div class="sep"></div>
+      <div class="row"><b>AI</b></div>
+      <label class="row"><input type="checkbox" data-pref="aiEnabled"> <span>Enable AI features</span></label>
+      <div class="hint">Off by default. While off, no AI code runs and no page content
+        ever leaves this machine. With it on, page text is sent to your chosen provider
+        only when you click an AI action.</div>
+      <label class="row"><span class="mut">API key</span></label>
+      <input class="num keyfield" type="password" data-pref="aiKey" placeholder="paste your API key">
+      <div class="sep"></div>
+      <div class="hint" id="engineState"></div>
+    </div>
+  </div>
+
+  <!-- ask-first prompt -->
+  <div class="promptwrap" id="promptWrap">
+    <div class="prompt" id="prompt">
+      <div class="ptitle" id="promptTitle"></div>
+      <div class="ptext" id="promptText"></div>
+      <div class="pbtns" id="promptBtns"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="ui.js"></script>
+</body>
+</html>

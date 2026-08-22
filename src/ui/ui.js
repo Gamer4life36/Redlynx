@@ -1,0 +1,833 @@
+/* Browser chrome: tab strip, omnibar, panels, and the ask-first prompts. */
+const api = window.redlynx;
+const $ = (id) => document.getElementById(id);
+
+let state = { tabs: [], activeId: null };
+let nav = { url: '', canBack: false, canFwd: false, loading: false, secure: false, blocked: 0, media: 0 };
+let prefs = {};
+let urlFocused = false;
+
+// ── tabs ──────────────────────────────────────────────────────────
+function renderTabs() {
+  const host = $('tabs');
+  host.innerHTML = '';
+  state.tabs.forEach((t) => {
+    const el = document.createElement('div');
+    el.className = 'tab' + (t.id === state.activeId ? ' active' : '') + (t.suspended ? ' sus' : '') + (t.private ? ' priv' : '');
+    el.title = (t.suspended ? '[suspended] ' : '') + (t.title || '') + '\n' + (t.url || '');
+    const dot = t.loading ? '<span class="dot"></span>' : (t.pinned ? '<span class="dot" style="background:var(--warn)"></span>' : '');
+    el.innerHTML = dot + '<span class="t"></span><span class="cl" title="Close">✕</span>';
+    el.querySelector('.t').textContent = t.title || 'New tab';
+    el.onclick = (e) => { if (!e.target.classList.contains('cl')) api.activateTab(t.id); };
+    el.querySelector('.cl').onclick = (e) => { e.stopPropagation(); api.closeTab(t.id); };
+    el.oncontextmenu = (e) => {
+      e.preventDefault();
+      if (t.id === state.activeId) api.pinTab(t.id); else api.suspendTab(t.id);
+    };
+    host.appendChild(el);
+  });
+}
+
+// ── omnibar ───────────────────────────────────────────────────────
+function renderNav() {
+  $('back').disabled = !nav.canBack;
+  $('forward').disabled = !nav.canFwd;
+  $('reload').textContent = nav.loading ? '✕' : '⟳';
+  $('lock').textContent = nav.secure ? '🔒' : '⚠';
+  $('lock').title = nav.secure ? 'Encrypted connection' : 'Not secure';
+  if (!urlFocused) $('url').value = nav.url || '';
+
+  $('blockCount').textContent = nav.blocked || 0;
+  $('shield').classList.toggle('live', (nav.blocked || 0) > 0);
+  $('shieldTotal').textContent = nav.blocked || 0;
+
+  const m = nav.media || 0;
+  $('mediaCount').textContent = m;
+  $('grabBtn').classList.toggle('live', m > 0);
+  $('grabBtn').title = m ? (m + ' downloadable item(s) found on this page') : 'Download media from this page';
+}
+
+$('back').onclick = () => api.back();
+$('forward').onclick = () => api.forward();
+$('reload').onclick = () => (nav.loading ? api.stop() : api.reload());
+$('home').onclick = () => api.home();
+$('newtab').onclick = () => api.newTab();
+$('btnSuspendOthers').onclick = async () => { await api.suspendOthers(); toast('Other tabs suspended — memory freed.'); };
+
+const url = $('url');
+url.addEventListener('focus', () => { urlFocused = true; url.select(); });
+url.addEventListener('blur', () => { urlFocused = false; renderNav(); });
+// Warm the connection while the user is still typing, so Enter reuses an
+// already-open socket instead of starting DNS and TLS from scratch.
+let warmTimer = null;
+url.addEventListener('focus', () => { try { api.warm(''); } catch (e) {} });
+url.addEventListener('input', () => {
+  clearTimeout(warmTimer);
+  warmTimer = setTimeout(() => {
+    const v = url.value.trim();
+    // A typed address warms that host; anything else is heading for a search.
+    const isUrl = /^[a-z]+:\/\//i.test(v) || /^[\w-]+(\.[\w-]+)+/.test(v);
+    try { api.warm(isUrl ? (/^[a-z]+:\/\//i.test(v) ? v : 'https://' + v) : ''); } catch (e) {}
+  }, 120);
+});
+
+url.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { api.go(url.value); url.blur(); }
+  if (e.key === 'Escape') { url.value = nav.url; url.blur(); }
+});
+
+// ── panels ────────────────────────────────────────────────────────
+const PANELS = ['panelDownloads', 'panelMedia', 'panelShield', 'panelSettings', 'panelAI', 'panelGX', 'panelFavs', 'panelHistory', 'panelAnon'];
+// Anything drawn over the page needs the chrome view grown and raised first,
+// or it is clipped to the top strip and hidden behind the site.
+function syncOverlay() {
+  const shown = PANELS.some((p) => $(p).classList.contains('open')) ||
+                $('promptWrap').classList.contains('open') ||
+                $('findbar').classList.contains('on');
+  try { api.setOverlay(shown); } catch (e) {}
+}
+
+function openPanel(id) {
+  PANELS.forEach((p) => $(p).classList.toggle('open', p === id));
+  syncOverlay();
+  if (id === 'panelDownloads') refreshDownloads();
+  if (id === 'panelMedia') refreshMedia();
+  if (id === 'panelSettings') refreshSettings();
+  if (id === 'panelAI') refreshAI();
+  if (id === 'panelGX') refreshGX();
+  if (id === 'panelFavs') refreshFavs();
+  if (id === 'panelShield') refreshShield();
+  if (id === 'panelHistory') refreshHistory();
+  if (id === 'panelAnon') refreshAnon();
+}
+function closePanels() { PANELS.forEach((p) => $(p).classList.remove('open')); syncOverlay(); }
+
+// With a panel open the chrome covers the whole window, so a click on what
+// looks like the page lands on us instead of the site. Treat that as
+// "dismiss", which is what clicking away from a panel should do anyway.
+// Toolbar controls are excluded so their own toggles still work: this runs on
+// mousedown, and closing here first would make a second click re-open.
+document.addEventListener('mousedown', (e) => {
+  if (!PANELS.some((p) => $(p).classList.contains('open'))) return;
+  if (e.target.closest('.panel, .promptwrap')) return;
+  if (e.target.closest('.chip, .inline, .nav, .tab, .tabstrip, .omnibar, .bmbar, .findbar')) return;
+  closePanels();
+});
+document.querySelectorAll('[data-close]').forEach((b) => (b.onclick = closePanels));
+$('btnAI').onclick = () => togglePanel('panelAI');
+$('btnGX').onclick = () => togglePanel('panelGX');
+$('btnPop').onclick = async () => {
+  const r = await api.popOut();
+  toast(r === 'ok' ? 'Video popped out.' : r === 'closed' ? 'Pop-out closed.' : r === 'no-video' ? 'No video on this page.' : 'Could not pop out.', r === 'ok' || r === 'closed' ? '' : 'err');
+};
+$('btnDownloads').onclick = () => togglePanel('panelDownloads');
+$('btnShield').onclick = () => togglePanel('panelShield');
+$('btnSettings').onclick = () => togglePanel('panelSettings');
+$('shield').onclick = () => togglePanel('panelShield');
+$('grabBtn').onclick = () => togglePanel('panelMedia');
+function togglePanel(id) { const was = $(id).classList.contains('open'); closePanels(); if (!was) openPanel(id); }
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closePanels();
+  if (e.ctrlKey && e.key === 't') { e.preventDefault(); api.newTab(); }
+  if (e.ctrlKey && e.key === 'w') { e.preventDefault(); if (state.activeId) api.closeTab(state.activeId); }
+  if (e.ctrlKey && e.key === 'l') { e.preventDefault(); url.focus(); }
+  if (e.ctrlKey && e.key === 'j') { e.preventDefault(); togglePanel('panelDownloads'); }
+  if (e.key === 'F5') { e.preventDefault(); api.reload(); }
+  if (e.ctrlKey && e.key === 'f') { e.preventDefault(); openFind(); }
+  if (e.ctrlKey && e.key === 'h') { e.preventDefault(); togglePanel('panelHistory'); }
+  if (e.ctrlKey && e.shiftKey && (e.key === 'N' || e.key === 'n')) { e.preventDefault(); api.newPrivateTab(); }
+  if (e.ctrlKey && e.key === 'p') { e.preventDefault(); api.print(); }
+  if (e.ctrlKey && e.key === 'd') { e.preventDefault(); $('btnStar').click(); }
+  // Ctrl+Tab cycles, Ctrl+1..9 jumps straight to a tab
+  if (e.ctrlKey && e.key === 'Tab') {
+    e.preventDefault();
+    const ids = state.tabs.map((t) => t.id);
+    if (ids.length > 1) {
+      const i = ids.indexOf(state.activeId);
+      api.activateTab(ids[(i + (e.shiftKey ? -1 : 1) + ids.length) % ids.length]);
+    }
+  }
+  if (e.ctrlKey && /^[1-9]$/.test(e.key)) {
+    e.preventDefault();
+    const ids = state.tabs.map((t) => t.id);
+    const n = Number(e.key);
+    const target = n === 9 ? ids[ids.length - 1] : ids[n - 1];
+    if (target) api.activateTab(target);
+  }
+});
+
+// ── media panel ───────────────────────────────────────────────────
+async function refreshMedia() {
+  const res = await api.mediaList(state.activeId);
+  const host = $('mediaList');
+  const items = (res && res.items) || [];
+  if (!res || !res.enginesReady) {
+    $('grabPage').disabled = true;
+    host.innerHTML = '<div class="mut pad">Download engines not found.<br>Put <code>yt-dlp.exe</code>, <code>gallery-dl.exe</code> and <code>ffmpeg.exe</code> in an <code>engines</code> folder next to the app.</div>';
+    return;
+  }
+  $('grabPage').disabled = false;
+  if (!items.length) {
+    host.innerHTML = '<div class="mut pad">No media spotted yet. Try playing the video first — the stream is picked up as it loads.<br><br>You can still use “Grab this page’s video” below; the engine understands 1,700+ sites.</div>';
+    return;
+  }
+  host.innerHTML = '';
+  items.forEach((it) => {
+    const row = document.createElement('div');
+    row.className = 'item';
+    const name = decodeURIComponent((it.url.split('/').pop() || it.url).split('?')[0]).slice(0, 60);
+    const dims = it.width && it.height ? (it.width + '×' + it.height) : '';
+    row.innerHTML = '<span class="kind ' + it.kind + '">' + it.kind + '</span>' +
+      '<div class="meta"><div class="nm"></div><div class="sub"></div></div>' +
+      '<button class="btn">⬇</button>';
+    row.querySelector('.nm').textContent = name || it.url;
+    row.querySelector('.sub').textContent = [dims, it.url].filter(Boolean).join(' · ');
+    row.querySelector('button').onclick = async () => {
+      await api.grab(it);
+      toast('Added to downloads.');
+      openPanel('panelDownloads');
+    };
+    host.appendChild(row);
+  });
+}
+$('grabPage').onclick = async () => {
+  await api.grabPage({ url: nav.url, title: (state.tabs.find((t) => t.id === state.activeId) || {}).title });
+  toast('Grabbing this page — see Downloads.');
+  openPanel('panelDownloads');
+};
+
+// ── downloads panel ───────────────────────────────────────────────
+function dlRow(d) {
+  const row = document.createElement('div');
+  row.className = 'item';
+  const statusTxt = {
+    queued: 'Queued', downloading: (d.progress || 0).toFixed(0) + '%  ' + (d.speed || '') + (d.eta ? '  ETA ' + d.eta : ''),
+    converting: 'Merging audio + video…', done: '✓ Done', failed: '✗ ' + (d.error || 'Failed'), canceled: 'Canceled',
+  }[d.status] || d.status;
+  row.innerHTML =
+    '<div class="meta"><div class="nm"></div><div class="sub st-' + d.status + '"></div>' +
+    (d.status === 'downloading' ? '<div class="bar"><i style="width:' + (d.progress || 0) + '%"></i></div>' : '') +
+    '</div><button class="btn"></button>';
+  row.querySelector('.nm').textContent = (d.title || d.url).slice(0, 70);
+  row.querySelector('.sub').textContent = statusTxt + (d.size ? '  ·  ' + d.size : '');
+  const btn = row.querySelector('button');
+  if (d.status === 'done') { btn.textContent = 'Open'; btn.onclick = () => api.openPath(d.file); }
+  else if (d.status === 'failed' || d.status === 'canceled') { btn.textContent = 'Retry'; btn.onclick = () => api.retryDownload(d.id); }
+  else { btn.textContent = 'Stop'; btn.onclick = () => api.cancelDownload(d.id); }
+  return row;
+}
+async function refreshDownloads(list) {
+  const items = list || (await api.downloads());
+  const host = $('dlList');
+  host.innerHTML = '';
+  if (!items.length) { host.innerHTML = '<div class="mut pad">Nothing downloaded yet.</div>'; }
+  else items.slice().reverse().forEach((d) => host.appendChild(dlRow(d)));
+  const dir = await api.downloadDir();
+  $('dlDir').textContent = dir;
+}
+$('openDlDir').onclick = async () => api.openPath(await api.downloadDir());
+
+// ── settings / prefs ──────────────────────────────────────────────
+function bindPrefs() {
+  document.querySelectorAll('[data-pref]').forEach((el) => {
+    const key = el.dataset.pref;
+    el.onchange = () => {
+      const val = el.type === 'checkbox' ? el.checked : (el.type === 'number' ? Number(el.value) : el.value);
+      api.setPrefs({ [key]: val });
+    };
+  });
+}
+function renderPrefs() {
+  gxLabels();
+  refreshAnon();
+  applyBg();
+  applyTheme();
+  renderPins();
+  renderBM();
+  document.querySelectorAll('[data-pref]').forEach((el) => {
+    const v = prefs[el.dataset.pref];
+    if (el.type === 'checkbox') el.checked = !!v; else el.value = v == null ? '' : v;
+  });
+}
+async function refreshSettings() {
+  const sel = $('engineSel');
+  if (sel && !sel.options.length) {
+    (await api.enginesList()).forEach((e) => {
+      const o = document.createElement('option');
+      o.value = e.id; o.textContent = e.name;
+      sel.appendChild(o);
+    });
+    sel.value = prefs.searchEngine || 'google';
+  }
+  showZoom();
+  $('dlDir2').textContent = await api.downloadDir();
+  const ready = await api.enginesReady();
+  $('engineState').textContent = ready
+    ? 'Download engines: ready (yt-dlp + gallery-dl + ffmpeg).'
+    : 'Download engines missing — put yt-dlp.exe, gallery-dl.exe and ffmpeg.exe in an “engines” folder next to the app.';
+  const v = await api.vaultList();
+  const host = $('vaultList');
+  if (!v.length) { host.className = 'mut'; host.textContent = 'None saved.'; return; }
+  host.className = '';
+  host.innerHTML = '';
+  v.forEach((e) => {
+    const row = document.createElement('div');
+    row.className = 'item';
+    row.innerHTML = '<div class="meta"><div class="nm"></div><div class="sub"></div></div><button class="btn">Forget</button>';
+    row.querySelector('.nm').textContent = e.host;
+    row.querySelector('.sub').textContent = (e.kind || 'password') + (e.username ? ' · ' + e.username : '');
+    row.querySelector('button').onclick = async () => { await api.vaultForget(e.host); refreshSettings(); };
+    host.appendChild(row);
+  });
+}
+$('clearData').onclick = async () => { await api.clearBrowsingData(); toast('Cookies and cache cleared.'); };
+
+// ── ask-first prompts ─────────────────────────────────────────────
+function showPrompt(p) {
+  const wrap = $('promptWrap');
+  const btns = $('promptBtns');
+  btns.innerHTML = '';
+  if (p.type === 'save') {
+    const what = p.kind === 'card' ? 'card details' : 'password';
+    $('promptTitle').textContent = 'Save this ' + what + '?';
+    $('promptText').textContent = 'Redlynx has not saved anything yet. ' + p.host +
+      (p.username ? ' · ' + p.username : '') + '. Nothing is written to disk unless you choose Save.';
+    addBtn(btns, 'Never for this site', 'never');
+    addBtn(btns, 'Not now', 'dismiss');
+    addBtn(btns, 'Save', 'save', true);
+  } else {
+    const nice = { media: 'use your camera or microphone', geolocation: 'know your location', notifications: 'send notifications',
+      'display-capture': 'capture your screen', midi: 'use MIDI devices', 'clipboard-read': 'read your clipboard' };
+    $('promptTitle').textContent = p.host + ' wants permission';
+    $('promptText').textContent = 'This site is asking to ' + (nice[p.permission] || p.permission) + '. Denied unless you allow it.';
+    addBtn(btns, 'Block', 'deny');
+    addBtn(btns, 'Allow', 'allow', true);
+  }
+  wrap.classList.add('open');
+  wrap._id = p.id;
+  syncOverlay();
+}
+function addBtn(host, label, answer, accent) {
+  const b = document.createElement('button');
+  b.className = 'btn' + (accent ? ' accent' : '');
+  b.textContent = label;
+  b.onclick = async () => {
+    const wrap = $('promptWrap');
+    wrap.classList.remove('open');
+    syncOverlay();
+    await api.answerPrompt(wrap._id, answer);
+  };
+  host.appendChild(b);
+}
+
+
+
+
+
+
+// ── protection panel ──────────────────────────────────────────────
+async function refreshShield() {
+  try {
+    const st = await api.blockStatus();
+    const when = st.at ? new Date(st.at).toLocaleString() : 'not loaded';
+    $('listStatus').textContent = 'Source: ' + (st.source || 'none') + ' · loaded ' + when;
+  } catch (e) {}
+}
+$('refreshLists').onclick = async () => {
+  const b = $('refreshLists');
+  b.disabled = true; b.textContent = '↻ Fetching…';
+  const r = await api.blockRefresh();
+  b.disabled = false; b.textContent = '↻ Refresh filter lists';
+  toast(r && r.ok ? 'Filter lists updated.' : 'Could not update lists.', r && r.ok ? '' : 'err');
+  refreshShield();
+};
+
+// ── pinned toolbar: only what the user chose is on the bar ────────
+// ── Google AI Overview toggle ─────────────────────────────────────
+// The chip shows the state at a glance: lit means the overview is showing,
+// dimmed means it is hidden and the results start at the top.
+function syncAio() {
+  const btn = $('btnAio');
+  if (!btn) return;
+  const hidden = prefs.hideAiOverview !== false;
+  btn.classList.toggle('off', hidden);
+  btn.title = hidden
+    ? 'Google AI Overview is hidden — click to show it'
+    : 'Google AI Overview is showing — click to hide it';
+}
+
+$('btnAio').onclick = async () => {
+  const hidden = prefs.hideAiOverview !== false;
+  prefs.hideAiOverview = hidden ? false : true;
+  await api.setPrefs({ hideAiOverview: prefs.hideAiOverview });
+  syncAio();
+  toast(prefs.hideAiOverview ? 'AI Overview hidden.' : 'AI Overview showing.');
+  // Take effect on what is already on screen, not just the next search.
+  if (/google\.[a-z.]+\/search/i.test(nav.url || '')) api.reload();
+};
+
+function renderPins() {
+  const us = prefs.userscripts || {};
+  document.querySelectorAll('[data-us]').forEach((cb) => { cb.checked = us[cb.dataset.us] !== false; });
+  syncAio();
+  const pins = prefs.pinned || {};
+  document.querySelectorAll('[data-tool]').forEach((el) => {
+    el.classList.toggle('pinned', !!pins[el.dataset.tool]);
+  });
+  document.querySelectorAll('[data-pin]').forEach((cb) => { cb.checked = !!pins[cb.dataset.pin]; });
+}
+(function wireUserscripts() {
+  document.querySelectorAll('[data-us]').forEach((cb) => {
+    cb.addEventListener('change', async () => {
+      const us = { ...(prefs.userscripts || {}), [cb.dataset.us]: cb.checked };
+      prefs.userscripts = us;
+      await api.setPrefs({ userscripts: us });
+      toast(cb.checked ? 'Enabled — reload the page.' : 'Disabled — reload the page.');
+    });
+  });
+})();
+
+(function wirePins() {
+  document.querySelectorAll('[data-pin]').forEach((cb) => {
+    cb.addEventListener('change', async () => {
+      const pins = { ...(prefs.pinned || {}), [cb.dataset.pin]: cb.checked };
+      prefs.pinned = pins;
+      renderPins();
+      await api.setPrefs({ pinned: pins });
+    });
+  });
+  // "Open" buttons make unpinned tools reachable from Settings
+  document.querySelectorAll('[data-open]').forEach((b) => {
+    b.addEventListener('click', (e) => { e.preventDefault(); openPanel(b.dataset.open); });
+  });
+})();
+
+
+
+
+
+// ── background (image / GIF) ──────────────────────────────────────
+async function applyBg() {
+  const el = $('chromeBg');
+  const url = await api.bgUrl();
+  const on = !!url && !!prefs.bgApplyChrome;
+  document.body.classList.toggle('hasbg', on);
+  el.style.backgroundImage = on ? ('url("' + url + '")') : 'none';
+  el.style.opacity = on ? (Number(prefs.bgOpacity || 45) / 100) : 0;
+  el.style.filter = prefs.bgBlur ? ('blur(' + prefs.bgBlur + 'px)') : 'none';
+  const o = $('bgOpacityVal'), b = $('bgBlurVal');
+  if (o) o.textContent = (prefs.bgOpacity || 45) + '%';
+  if (b) b.textContent = (prefs.bgBlur || 0) + 'px';
+}
+$('bgPick').onclick = async () => {
+  const r = await api.bgPick();
+  if (r && r.ok) { toast('Background set.'); applyBg(); }
+};
+$('bgClear').onclick = async () => { await api.bgClear(); toast('Background cleared.'); applyBg(); };
+['bgOpacityRange', 'bgBlurRange'].forEach((id) => {
+  const el = $(id);
+  if (el) el.addEventListener('input', () => { prefs[el.dataset.pref] = Number(el.value); applyBg(); });
+});
+
+// ── anonymity panel ───────────────────────────────────────────────
+async function refreshAnon() {
+  const sel = $('dohSel');
+  if (sel && !sel.options.length) {
+    (await api.anonDoh()).forEach((d) => {
+      const o = document.createElement('option');
+      o.value = d.id; o.textContent = d.name;
+      sel.appendChild(o);
+    });
+    sel.value = prefs.dohProvider || 'quad9';
+  }
+  // manual host/port only matter when not using the Tor preset
+  const manual = $('proxyManual');
+  if (manual) manual.style.display = (prefs.proxyMode === 'tor') ? 'none' : 'flex';
+}
+$('newPrivate').onclick = () => { api.newPrivateTab(); closePanels(); };
+$('anonApply').onclick = async () => {
+  const r = await api.anonApply();
+  $('anonResult').textContent = r && r.ok
+    ? ('Applied. Routing: ' + (r.mode === 'direct' ? 'direct (no proxy)' : r.mode))
+    : ('Could not apply: ' + ((r && r.error) || 'unknown'));
+  toast(r && r.ok ? 'Network settings applied.' : 'Could not apply settings.', r && r.ok ? '' : 'err');
+};
+$('anonCheck').onclick = async () => {
+  $('anonResult').textContent = 'Checking…';
+  const r = await api.anonCheckIp();
+  $('anonResult').textContent = r && r.ok
+    ? ('Sites currently see: ' + r.ip)
+    : ('Check failed: ' + ((r && r.error) || 'unknown'));
+};
+$('btnAnon').onclick = () => togglePanel('panelAnon');
+
+// ── find in page ──────────────────────────────────────────────────
+const findBar = $('findbar'), findInput = $('findInput');
+let findTerm = '';
+function openFind() {
+  findBar.classList.add('on');
+  findInput.focus(); findInput.select();
+  if (findInput.value) doFind(true, false);
+}
+function closeFind() {
+  findBar.classList.remove('on');
+  $('findCount').textContent = '';
+  api.findStop(false);
+}
+function doFind(forward, next) {
+  const t = findInput.value;
+  if (!t) { $('findCount').textContent = ''; api.findStop(false); return; }
+  findTerm = t;
+  api.findStart(t, forward, next);
+}
+findInput.addEventListener('input', () => doFind(true, false));
+findInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); doFind(!e.shiftKey, true); }
+  if (e.key === 'Escape') { e.preventDefault(); closeFind(); }
+});
+$('findNext').onclick = () => doFind(true, true);
+$('findPrev').onclick = () => doFind(false, true);
+$('findClose').onclick = closeFind;
+api.onFindResult((r) => {
+  $('findCount').textContent = r.total ? (r.active + ' / ' + r.total) : 'no matches';
+});
+api.onOpenFind(openFind);
+
+// ── history ───────────────────────────────────────────────────────
+function whenTxt(ms) {
+  const d = Date.now() - ms;
+  if (d < 60000) return 'just now';
+  if (d < 3600000) return Math.round(d / 60000) + 'm ago';
+  if (d < 86400000) return Math.round(d / 3600000) + 'h ago';
+  return new Date(ms).toLocaleDateString();
+}
+async function refreshHistory() {
+  const list = await api.histSearch($('histSearch').value);
+  const host = $('histList');
+  host.innerHTML = '';
+  if (!list.length) { host.innerHTML = '<div class="mut pad">Nothing here.</div>'; return; }
+  list.slice(0, 200).forEach((h) => {
+    const row = document.createElement('div');
+    row.className = 'histrow';
+    row.innerHTML = '<div class="ht"><div class="t"></div><div class="u"></div></div>' +
+                    '<span class="hw"></span><button class="btn mini">✕</button>';
+    row.querySelector('.t').textContent = h.title || h.url;
+    row.querySelector('.u').textContent = h.url;
+    row.querySelector('.hw').textContent = whenTxt(h.at);
+    row.querySelector('.ht').onclick = () => { api.newTab(h.url); closePanels(); };
+    row.querySelector('button').onclick = async () => { await api.histRemove(h.url); refreshHistory(); };
+    host.appendChild(row);
+  });
+}
+$('histSearch').addEventListener('input', () => refreshHistory());
+document.querySelectorAll('[data-clear]').forEach((b) => {
+  b.onclick = async () => {
+    await api.histClear(Number(b.dataset.clear));
+    refreshHistory();
+    toast('History cleared.');
+  };
+});
+$('btnHistory').onclick = () => togglePanel('panelHistory');
+
+// ── zoom ──────────────────────────────────────────────────────────
+async function showZoom() { $('zoomVal').textContent = (await api.zoomGet()) + '%'; }
+$('zoomIn').onclick = async () => { await api.zoomSet(1); showZoom(); };
+$('zoomOut').onclick = async () => { await api.zoomSet(-1); showZoom(); };
+$('zoomReset').onclick = async () => { await api.zoomSet(0); showZoom(); };
+
+// ── import bookmarks ──────────────────────────────────────────────
+$('importBm').onclick = async () => {
+  const r = await api.importBookmarks();
+  if (r && r.ok) { toast('Imported ' + r.count + ' bookmarks.'); renderBM(); }
+  else toast((r && r.error) || 'Nothing to import.', 'err');
+};
+
+// ── things the main process asks the UI to do ─────────────────────
+api.onDoBookmark(() => $('btnStar').click());
+api.onOpenPanel((p) => openPanel(p.id));
+
+// ── bookmarks bar ─────────────────────────────────────────────────
+const bmMenu = $('bmMenu');
+function closeMenu() { bmMenu.classList.remove('on'); bmMenu.innerHTML = ''; }
+document.addEventListener('click', (e) => { if (!bmMenu.contains(e.target)) closeMenu(); }, true);
+
+function showMenu(x, y, items) {
+  bmMenu.innerHTML = '';
+  items.forEach((it) => {
+    if (it.sep) { const d = document.createElement('div'); d.className = 'sepm'; bmMenu.appendChild(d); return; }
+    if (it.header) { const h = document.createElement('div'); h.className = 'hdr'; h.textContent = it.header; bmMenu.appendChild(h); return; }
+    const el = document.createElement('div');
+    el.className = 'mi' + (it.danger ? ' danger' : '');
+    el.textContent = it.label;
+    el.onclick = (ev) => { ev.stopPropagation(); closeMenu(); it.run && it.run(); };
+    bmMenu.appendChild(el);
+  });
+  bmMenu.classList.add('on');
+  const w = bmMenu.offsetWidth || 200;
+  bmMenu.style.left = Math.max(6, Math.min(x, window.innerWidth - w - 8)) + 'px';
+  bmMenu.style.top = y + 'px';
+}
+
+async function itemMenu(x, y, node) {
+  const folders = await api.bmFolders();
+  const items = [];
+  if (node.type === 'link') {
+    items.push({ label: 'Open', run: () => api.go(node.url) });
+    items.push({ label: 'Open in new tab', run: () => api.newTab(node.url) });
+    items.push({ sep: true });
+  }
+  items.push({ label: 'Rename…', run: () => startRename(node) });
+  if (node.type === 'link') {
+    const others = folders.filter((f) => f.id !== node.id);
+    if (others.length) {
+      items.push({ sep: true }, { header: 'Move to folder' });
+      others.forEach((f) => items.push({ label: '📁 ' + f.title, run: async () => { await api.bmMoveTo(node.id, f.id); renderBM(); } }));
+      items.push({ label: '↥ Bar (top level)', run: async () => { await api.bmMoveTo(node.id, null); renderBM(); } });
+    }
+  }
+  items.push({ sep: true }, { label: 'Delete', danger: true, run: async () => { await api.bmRemove(node.id); renderBM(); syncStar(); } });
+  showMenu(x, y, items);
+}
+
+// inline rename, so there is no blocking dialog
+function startRename(node) {
+  const el = document.querySelector('.bmitem[data-id="' + node.id + '"] .lb');
+  if (!el) return;
+  const input = document.createElement('input');
+  input.className = 'num';
+  input.style.cssText = 'width:130px;height:20px;font-size:12px;padding:0 6px';
+  input.value = node.title;
+  el.replaceWith(input);
+  input.focus(); input.select();
+  const commit = async () => { await api.bmRename(node.id, input.value.trim() || node.title); renderBM(); };
+  input.onkeydown = (e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') renderBM(); };
+  input.onblur = commit;
+}
+
+async function renderBM() {
+  const bar = $('bmbar');
+  bar.classList.toggle('on', !!prefs.showBookmarksBar);
+  if (!prefs.showBookmarksBar) return;
+  const tree = await api.bmTree();
+  const host = $('bmItems');
+  host.innerHTML = '';
+  if (!tree.length) {
+    host.innerHTML = '<span class="bmempty">No bookmarks yet — press ☆ in the address bar to add this page.</span>';
+    return;
+  }
+  tree.forEach((node) => {
+    const el = document.createElement('div');
+    el.className = 'bmitem';
+    el.dataset.id = node.id;
+    const icon = node.type === 'folder' ? '📁' : '🔖';
+    el.innerHTML = '<span class="ic">' + icon + '</span><span class="lb"></span>';
+    el.querySelector('.lb').textContent = node.title;
+    el.title = node.type === 'folder' ? (node.children || []).length + ' item(s)' : node.url;
+    el.onclick = (e) => {
+      e.stopPropagation();
+      if (node.type === 'link') return api.go(node.url);
+      const kids = node.children || [];
+      const r = el.getBoundingClientRect();
+      if (!kids.length) return showMenu(r.left, r.bottom + 2, [{ label: '(empty folder)' }]);
+      showMenu(r.left, r.bottom + 2, kids.map((k) => ({
+        label: k.title, run: () => api.go(k.url),
+      })).concat([{ sep: true }, { header: 'Folder' },
+        { label: 'Rename folder…', run: () => startRename(node) },
+        { label: 'Delete folder', danger: true, run: async () => { await api.bmRemove(node.id); renderBM(); } }]));
+    };
+    el.oncontextmenu = (e) => { e.preventDefault(); e.stopPropagation(); itemMenu(e.clientX, e.clientY, node); };
+    host.appendChild(el);
+  });
+}
+
+$('bmNewFolder').onclick = async (e) => {
+  e.stopPropagation();
+  const host = $('bmItems');
+  const input = document.createElement('input');
+  input.className = 'num';
+  input.style.cssText = 'width:140px;height:22px;font-size:12px;padding:0 6px';
+  input.placeholder = 'Folder name';
+  host.appendChild(input);
+  input.focus();
+  const commit = async () => {
+    const v = input.value.trim();
+    if (v) await api.bmAddFolder(v);
+    renderBM();
+  };
+  input.onkeydown = (ev) => { if (ev.key === 'Enter') commit(); if (ev.key === 'Escape') renderBM(); };
+  input.onblur = commit;
+};
+
+// ── favorites ─────────────────────────────────────────────────────
+async function refreshFavs() {
+  const list = await api.favList();
+  const host = $('favList');
+  host.innerHTML = '';
+  if (!list.length) { host.innerHTML = '<div class="mut pad">No favorites yet. Use ☆ in the address bar.</div>'; return; }
+  list.forEach((f) => {
+    const row = document.createElement('div');
+    row.className = 'item';
+    row.innerHTML = '<div class="meta"><div class="nm"></div><div class="sub"></div></div><button class="btn mini">✕</button>';
+    row.querySelector('.nm').textContent = f.title || f.url;
+    row.querySelector('.sub').textContent = f.url;
+    row.querySelector('.meta').style.cursor = 'pointer';
+    row.querySelector('.meta').onclick = () => { api.newTab(f.url); closePanels(); };
+    row.querySelector('button').onclick = async () => { await api.favRemove(f.url); refreshFavs(); renderBM(); syncStar(); };
+    host.appendChild(row);
+  });
+}
+async function syncStar() {
+  const on = await api.favIsSaved();
+  const st = $('btnStar');
+  if (st) { st.textContent = on ? '★' : '☆'; st.classList.toggle('on', on); st.title = on ? 'Saved to favorites' : 'Save to favorites'; }
+}
+$('btnStar').onclick = async () => {
+  const r = await api.favAdd();
+  if (r && r.error) return toast(r.error, 'err');
+  toast(r.already ? 'Already bookmarked.' : 'Bookmarked.');
+  syncStar(); renderBM();
+};
+$('favAdd').onclick = async () => { await api.favAdd(); refreshFavs(); syncStar(); renderBM(); toast('Bookmarked.'); };
+$('btnFavs').onclick = () => togglePanel('panelFavs');
+
+// ── theme ─────────────────────────────────────────────────────────
+function applyTheme() {
+  const t = prefs.theme || 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+  if (t === 'rgb') {
+    // hand the accent over to the keyframe animation
+    document.documentElement.style.removeProperty('--accent');
+    document.documentElement.style.removeProperty('--accent2');
+  } else {
+    const a = prefs.accent || '#e63946';
+    document.documentElement.style.setProperty('--accent', a);
+    document.documentElement.style.setProperty('--accent2', lighten(a, 22));
+  }
+  // the accent picker is meaningless while the rainbow is running
+  const sw = document.querySelector('[data-pref="accent"]');
+  if (sw) sw.disabled = (t === 'rgb');
+}
+function lighten(hex, pct) {
+  try {
+    const n = parseInt(String(hex).replace('#', ''), 16);
+    const cl = (v) => Math.max(0, Math.min(255, Math.round(v + (255 - v) * (pct / 100))));
+    return '#' + [cl((n >> 16) & 255), cl((n >> 8) & 255), cl(n & 255)]
+      .map((v) => v.toString(16).padStart(2, '0')).join('');
+  } catch (e) { return hex; }
+}
+
+// ── Control: limiters + hot tabs ──────────────────────────────────
+function gxLabels() {
+  const cpu = Number(prefs.cpuLimit) || 100;
+  const ram = Number(prefs.ramLimit) || 0;
+  const net = Number(prefs.netLimit) || 0;
+  const c = $('cpuVal'), r = $('ramVal'), n = $('netVal');
+  if (c) c.textContent = cpu >= 100 ? '100% (full)' : cpu + '%';
+  if (r) r.textContent = ram ? (ram >= 1000 ? (ram / 1000).toFixed(1) + ' GB' : ram + ' MB') : 'Off';
+  if (n) n.textContent = net ? net + ' Mbps' : 'Unlimited';
+}
+let gxTimer = null;
+async function refreshGX() {
+  gxLabels();
+  const hot = await api.hotTabs();
+  const mem = $('gxMem');
+  if (mem) mem.textContent = (hot.totalMb >= 1000 ? (hot.totalMb / 1000).toFixed(1) + ' GB' : hot.totalMb + ' MB') + ' in use';
+  const host = $('hotList');
+  host.innerHTML = '';
+  if (!hot.rows.length) { host.innerHTML = '<div class="mut pad">No tabs.</div>'; }
+  hot.rows.forEach((t) => {
+    const el = document.createElement('div');
+    el.className = 'hot';
+    el.innerHTML = '<span class="hn"></span><span class="hc"></span><span class="hm"></span><button></button>';
+    el.querySelector('.hn').textContent = (t.suspended ? '💤 ' : '') + (t.title || 'Tab');
+    el.querySelector('.hc').textContent = t.cpu ? t.cpu + '%' : '—';
+    el.querySelector('.hm').textContent = t.memMb ? t.memMb + ' MB' : '';
+    const b = el.querySelector('button');
+    b.textContent = t.suspended ? 'Wake' : 'Suspend';
+    b.onclick = async () => { if (t.suspended) await api.activateTab(t.id); else await api.suspendTab(t.id); refreshGX(); };
+    host.appendChild(el);
+  });
+  clearTimeout(gxTimer);
+  if ($('panelGX').classList.contains('open')) gxTimer = setTimeout(refreshGX, 2500);
+}
+// live labels while dragging, save on release
+['cpuRange', 'ramRange', 'netRange'].forEach((id) => {
+  const el = $(id);
+  if (!el) return;
+  el.addEventListener('input', () => {
+    prefs[el.dataset.pref] = Number(el.value);
+    gxLabels();
+  });
+});
+
+
+// live theme preview while choosing
+(function () {
+  const sel = document.querySelector('[data-pref="theme"]');
+  if (sel) sel.addEventListener('change', () => { prefs.theme = sel.value; applyTheme(); });
+  const sw = document.querySelector('[data-pref="accent"]');
+  if (sw) sw.addEventListener('input', () => { prefs.accent = sw.value; applyTheme(); });
+  const rst = document.getElementById('resetAccent');
+  if (rst) rst.onclick = () => { prefs.accent = '#e63946'; applyTheme(); api.setPrefs({ accent: '#e63946' }); };
+})();
+
+// ── AI panel (does nothing at all unless the user switched AI on) ──
+async function refreshAI(msg) {
+  const st = await api.aiStatus();
+  const body = $('aiBody');
+  if (!st.enabled) {
+    body.innerHTML = '<div class="mut pad">AI is <b>off</b>.<br><br>Nothing AI-related runs and no page content leaves this machine while it is off.<br><br>Turn it on in Settings if you want it.</div>';
+    $('aiSummarize').disabled = true;
+    return;
+  }
+  $('aiSummarize').disabled = false;
+  if (!st.hasKey) {
+    body.innerHTML = '<div class="mut pad">AI is on, but no API key is set.<br><br>Add your provider key in Settings.</div>';
+    $('aiSummarize').disabled = true;
+    return;
+  }
+  body.innerHTML = msg || '<div class="mut pad">Ready. Summarise the page you are on, and the text is sent to your provider only when you ask.</div>';
+}
+$('aiSummarize').onclick = async () => {
+  await refreshAI('<div class="mut pad">Reading the page…</div>');
+  const r = await api.aiAsk('Summarise this page in a few clear bullet points.');
+  if (r && r.text) {
+    const out = document.createElement('div');
+    out.className = 'ai-out';
+    out.textContent = r.text;
+    $('aiBody').innerHTML = '';
+    $('aiBody').appendChild(out);
+  } else {
+    await refreshAI('<div class="mut pad">' + ((r && r.error) || 'Something went wrong.') + '</div>');
+  }
+};
+$('aiSettings').onclick = () => openPanel('panelSettings');
+
+// ── toast ─────────────────────────────────────────────────────────
+let toastTimer = null;
+function toast(text, kind) {
+  const t = $('toast');
+  t.textContent = text;
+  t.className = 'toast show' + (kind === 'err' ? ' err' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (t.className = 'toast'), 2600);
+}
+
+// ── events ────────────────────────────────────────────────────────
+api.onTabs((s) => { state = s; renderTabs(); });
+api.onNav((n) => { nav = n; renderNav(); syncStar(); });
+api.onPrefs((p) => { prefs = p; renderPrefs(); });
+api.onDownloads((list) => { if ($('panelDownloads').classList.contains('open')) refreshDownloads(list); });
+api.onPrompt(showPrompt);
+api.onToast((t) => toast(t.text, t.kind));
+api.onFocusUrl(() => { url.focus(); url.select(); });
+
+(async function init() {
+  bindPrefs();
+  prefs = await api.getPrefs(); renderPrefs();
+  state = await api.tabState(); renderTabs();
+  nav = await api.navState(); renderNav();
+  renderPins(); syncStar(); renderBM();
+  // main pushes nav on every real change, so this is only a safety net
+  setInterval(async () => { nav = await api.navState(); renderNav(); }, 5000);
+})();

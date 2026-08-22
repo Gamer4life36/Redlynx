@@ -1,0 +1,255 @@
+:root{
+  /* Dark (default) */
+  --bg:#0f1115; --chrome:#161a21; --panel:#1a1f28; --panel2:#212836;
+  --bd:#2a3342; --txt:#e6e9ef; --mut:#8b93a3;
+  --accent:#e63946; --accent2:#ff5c6a; --ok:#46d18b; --err:#ff6b6b; --warn:#f0b357;
+  --hover:#1b2029; --hover2:#2b3547; --tabclose:#3a2a30;
+}
+html[data-theme="midnight"]{
+  /* Midnight — true black, easy on OLED */
+  --bg:#000000; --chrome:#080808; --panel:#0d0d0f; --panel2:#151518;
+  --bd:#232327; --txt:#eaeaec; --mut:#8a8a92;
+  --hover:#141416; --hover2:#232327; --tabclose:#2a1d20;
+}
+html[data-theme="light"]{
+  /* Light */
+  --bg:#e9edf2; --chrome:#ffffff; --panel:#ffffff; --panel2:#eef1f5;
+  --bd:#d5dce5; --txt:#161b22; --mut:#5d6b7a;
+  --ok:#12925c; --err:#c92a2a; --warn:#b06f00;
+  --hover:#f1f4f8; --hover2:#e2e8f0; --tabclose:#f3dede;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden}
+/* Transparent on purpose. The tab strip and omnibar paint their own opaque
+   backgrounds and together cover exactly the chrome's normal height, so when
+   the view is grown to full window for a panel or prompt, the page shows
+   through underneath instead of being covered by a slab of chrome colour. */
+body{background:transparent;color:var(--txt);font:13px/1.35 'Segoe UI',system-ui,sans-serif;user-select:none}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+
+/* ── tab strip ── */
+.tabstrip{display:flex;align-items:flex-end;gap:2px;height:40px;padding:6px 8px 0;background:var(--bg)}
+.tabs{display:flex;gap:2px;overflow-x:auto;overflow-y:hidden;flex:0 1 auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{display:flex;align-items:center;gap:7px;min-width:56px;max-width:210px;height:34px;padding:0 8px 0 11px;
+  background:var(--chrome);border:1px solid transparent;border-bottom:none;border-radius:9px 9px 0 0;
+  color:var(--mut);white-space:nowrap;flex:0 1 auto;cursor:default}
+.tab:hover{background:var(--hover);color:var(--txt)}
+.tab.active{background:var(--chrome);border-color:var(--bd);color:var(--txt);box-shadow:0 -2px 0 var(--accent) inset}
+.tab .t{overflow:hidden;text-overflow:ellipsis;font-size:12.5px}
+.tab .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
+.tab.sus .t{opacity:.5;font-style:italic}
+.tab .cl{opacity:0;font-size:14px;line-height:1;padding:2px 4px;border-radius:5px;flex:none}
+.tab:hover .cl,.tab.active .cl{opacity:.65}
+.tab .cl:hover{opacity:1;background:var(--tabclose)}
+.newtab{width:30px;height:30px;font-size:19px;color:var(--mut);border-radius:8px;flex:none}
+.newtab:hover{background:var(--hover);color:var(--txt)}
+.spacer{flex:1}
+
+/* ── omnibar ── */
+.omnibar{display:flex;align-items:center;gap:4px;height:40px;padding:0 9px;background:var(--chrome);border-bottom:1px solid var(--bd)}
+.nav{width:28px;height:28px;border-radius:7px;color:var(--mut);font-size:17px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}
+/* home is an inline SVG so it centres exactly — text glyphs sit off-baseline.
+   Sized to match the reload glyph, nudged 1px to share its optical centre. */
+#home svg{display:block;margin-top:1px}
+.nav:hover{background:var(--panel2);color:var(--txt)}
+.nav:disabled{opacity:.28;cursor:default;background:none}
+.urlwrap{flex:1;display:flex;align-items:center;gap:6px;height:28px;padding:0 7px 0 10px;
+  background:var(--bg);border:1px solid var(--bd);border-radius:15px}
+.urlwrap:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px rgba(230,57,70,.18)}
+.lock{font-size:11px;opacity:.75;flex:none}
+#url{flex:1;background:none;border:none;outline:none;color:var(--txt);font-size:13px;user-select:text}
+/* One fixed height for every omnibar pill, so the shield, media count and
+   star line up instead of coming out 19, 29 and 25px tall. */
+.inline{display:flex;align-items:center;justify-content:center;gap:4px;height:20px;
+  font-size:11px;line-height:1;color:var(--mut);padding:0 8px;border-radius:10px;
+  background:var(--panel2);flex:none;font-variant-numeric:tabular-nums}
+.inline:hover{color:var(--txt);background:var(--hover2)}
+.inline.grab{color:var(--ok)}
+/* Count > 0. Deliberately NOT called .hot — that class belongs to the Control
+   panel's tab rows further down, and the two collided: the row styling won on
+   source order and forced padding:6px 0 onto this pill, which made it taller
+   than the omnibar and drew a stray border across its bottom.
+   An inset ring instead of a border keeps the box the same size as the idle
+   state, so nothing shifts when the count appears. */
+.inline.live{background:rgba(70,209,139,.14);color:#6fe0a9;
+  box-shadow:inset 0 0 0 1px rgba(70,209,139,.45)}
+.chip{height:28px;padding:0 8px;border-radius:7px;color:var(--mut);font-size:14px;display:flex;align-items:center}
+.chip:hover{background:var(--panel2);color:var(--txt)}
+/* A chip that represents an on/off state rather than one that opens a panel.
+   Dimmed with a strike reads as "switched off" without needing a label. */
+.chip.off{opacity:.45;position:relative}
+.chip.off::after{content:'';position:absolute;left:5px;right:5px;top:50%;
+  height:1px;background:currentColor;transform:rotate(-20deg)}
+
+/* ── panels ── */
+.panel{position:absolute;top:76px;right:10px;width:400px;max-height:calc(100vh - 100px);
+  background:var(--panel);border:1px solid var(--bd);border-radius:12px;
+  box-shadow:0 18px 50px rgba(0,0,0,.55);display:none;flex-direction:column;z-index:40}
+.panel.open{display:flex}
+.phead{display:flex;align-items:center;gap:8px;padding:11px 13px;border-bottom:1px solid var(--bd)}
+.phead b{font-size:13.5px}
+.phead .x{margin-left:auto;color:var(--mut);font-size:15px;padding:2px 6px;border-radius:6px}
+.phead .x:hover{background:var(--panel2);color:var(--txt)}
+.pbody{padding:10px 13px;overflow:auto;flex:1}
+.pfoot{padding:10px 13px;border-top:1px solid var(--bd);display:flex;gap:8px}
+.btn{padding:7px 13px;background:var(--panel2);border:1px solid var(--bd);border-radius:8px;font-size:12.5px}
+.btn:hover{background:var(--hover2)}
+.btn.accent{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn.accent:hover{background:var(--accent2)}
+.row{display:flex;align-items:center;gap:8px;padding:6px 0}
+.row input[type=checkbox]{width:15px;height:15px;accent-color:var(--accent)}
+.num{width:64px;background:var(--bg);border:1px solid var(--bd);border-radius:6px;color:var(--txt);padding:4px 7px}
+.sep{height:1px;background:var(--bd);margin:9px 0}
+.mut{color:var(--mut);font-size:12px}
+.pad{padding:14px 0}
+.hint{color:var(--mut);font-size:11.5px;line-height:1.5;padding:2px 0}
+.path{display:block;font-family:Consolas,monospace;font-size:11px;color:var(--mut);
+  background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:6px 8px;word-break:break-all;user-select:text}
+
+/* media + download rows */
+.item{display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid var(--bd)}
+.item:last-child{border-bottom:none}
+.item .meta{flex:1;min-width:0}
+.item .nm{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .sub{font-size:11px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kind{font-size:10px;text-transform:uppercase;letter-spacing:.5px;padding:2px 6px;border-radius:5px;
+  background:var(--panel2);color:var(--mut);flex:none}
+.kind.video{color:var(--accent2)} .kind.stream{color:var(--warn)} .kind.image{color:var(--ok)}
+.bar{height:5px;background:var(--panel2);border-radius:3px;overflow:hidden;margin-top:5px}
+.bar>i{display:block;height:100%;background:var(--accent);border-radius:3px;transition:width .2s}
+.st-done{color:var(--ok)} .st-failed{color:var(--err)} .st-canceled{color:var(--mut)}
+
+/* ── ask-first prompt ── */
+.promptwrap{position:absolute;inset:0;background:rgba(0,0,0,.35);display:none;align-items:flex-start;justify-content:center;z-index:80}
+.promptwrap.open{display:flex}
+.prompt{margin-top:70px;width:430px;background:var(--panel);border:1px solid var(--bd);border-radius:12px;
+  box-shadow:0 22px 60px rgba(0,0,0,.6);padding:16px 18px}
+.ptitle{font-size:14.5px;font-weight:600;margin-bottom:5px}
+.ptext{font-size:12.5px;color:var(--mut);line-height:1.5;margin-bottom:14px}
+.pbtns{display:flex;gap:8px;justify-content:flex-end}
+
+/* toast */
+.toast{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
+  background:var(--panel);border:1px solid var(--bd);border-radius:9px;padding:9px 14px;
+  font-size:12.5px;box-shadow:0 10px 30px rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .2s;z-index:90}
+.toast.show{opacity:1}
+.toast.err{border-color:var(--err);color:#ffd9d9}
+
+.keyfield{width:100%;font-family:Consolas,monospace;font-size:11px}
+.ai-out{white-space:pre-wrap;font-size:12.5px;line-height:1.55;user-select:text}
+
+.lim{padding:8px 0;border-bottom:1px solid var(--bd)}
+.lim:last-of-type{border-bottom:none}
+.limhead{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;margin-bottom:6px}
+.limhead b{color:var(--accent2)}
+.lim input[type=range]{width:100%;accent-color:var(--accent)}
+.hot{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--bd);font-size:12px}
+.hot:last-child{border-bottom:none}
+.hot .hn{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hot .hm{color:var(--warn);font-variant-numeric:tabular-nums;flex:none}
+.hot .hc{color:var(--mut);font-variant-numeric:tabular-nums;flex:none;width:44px;text-align:right}
+.hot button{font-size:11px;padding:3px 8px;border-radius:6px;background:var(--panel2);border:1px solid var(--bd);flex:none}
+.hot button:hover{background:var(--tabclose);border-color:var(--err)}
+
+.sel{width:auto;min-width:150px;cursor:pointer}
+.swatch{width:44px;height:26px;padding:0;border:1px solid var(--bd);border-radius:6px;background:none;cursor:pointer}
+
+/* ── RGB: animated rainbow accent (Chromium @property makes colours animatable) ── */
+@property --accent  { syntax: '<color>'; inherits: true; initial-value: #e63946; }
+@property --accent2 { syntax: '<color>'; inherits: true; initial-value: #ff5c6a; }
+
+html[data-theme="rgb"]{
+  --bg:#0b0d11; --chrome:#12151b; --panel:#161a22; --panel2:#1d232e;
+  --bd:#2a3342; --txt:#e9ecf2; --mut:#8b93a3;
+  --hover:#181d26; --hover2:#252d3a; --tabclose:#33203a;
+  animation: rgbCycle 9s linear infinite;
+}
+@keyframes rgbCycle{
+  0%   { --accent:#ff0040; --accent2:#ff5c86 }
+  16%  { --accent:#ff7a00; --accent2:#ffab4d }
+  33%  { --accent:#ffd400; --accent2:#ffe766 }
+  50%  { --accent:#00e05a; --accent2:#5cffa6 }
+  66%  { --accent:#00b3ff; --accent2:#66d9ff }
+  83%  { --accent:#7b3dff; --accent2:#ab84ff }
+  100% { --accent:#ff0040; --accent2:#ff5c86 }
+}
+/* a living rainbow hairline under the omnibar, RGB mode only */
+html[data-theme="rgb"] .omnibar{ border-bottom:none; position:relative }
+html[data-theme="rgb"] .omnibar::after{
+  content:''; position:absolute; left:0; right:0; bottom:0; height:2px;
+  background:linear-gradient(90deg,#ff0040,#ff7a00,#ffd400,#00e05a,#00b3ff,#7b3dff,#ff0040);
+  background-size:300% 100%; animation: rgbSlide 6s linear infinite;
+}
+@keyframes rgbSlide{ 0%{background-position:0% 50%} 100%{background-position:300% 50%} }
+html[data-theme="rgb"] .tab.active{ box-shadow:0 -2px 0 var(--accent) inset }
+
+.btn.mini{margin-left:auto;padding:3px 9px;font-size:11px}
+.pins .row{padding:4px 0}
+.inline.star{color:var(--mut);font-size:14px;padding:0 7px}
+.inline.star.on{color:var(--warn)}
+[data-tool]{display:none}
+[data-tool].pinned{display:flex}
+
+/* ── bookmarks bar ── */
+.bmbar{display:none;align-items:center;gap:2px;height:32px;padding:0 8px;
+  background:var(--chrome);border-bottom:1px solid var(--bd)}
+.bmbar.on{display:flex}
+.bmitems{display:flex;align-items:center;gap:2px;overflow-x:auto;flex:1;scrollbar-width:none}
+.bmitems::-webkit-scrollbar{display:none}
+.bmitem{display:flex;align-items:center;gap:5px;max-width:190px;height:24px;padding:0 8px;
+  border-radius:6px;color:var(--txt);font-size:12px;white-space:nowrap;cursor:pointer;flex:none}
+.bmitem:hover{background:var(--hover2)}
+.bmitem .ic{font-size:11px;opacity:.85;flex:none}
+.bmitem .lb{overflow:hidden;text-overflow:ellipsis}
+.bmnew{height:24px;padding:0 8px;border-radius:6px;color:var(--mut);font-size:12px;flex:none}
+.bmnew:hover{background:var(--hover2);color:var(--txt)}
+/* folder dropdown + right-click menu */
+.bmmenu{position:absolute;display:none;min-width:190px;max-height:60vh;overflow:auto;
+  background:var(--panel);border:1px solid var(--bd);border-radius:10px;padding:5px;
+  box-shadow:0 14px 40px rgba(0,0,0,.55);z-index:70}
+.bmmenu.on{display:block}
+.bmmenu .mi{display:flex;align-items:center;gap:7px;padding:7px 9px;border-radius:6px;
+  font-size:12.5px;cursor:pointer;white-space:nowrap}
+.bmmenu .mi:hover{background:var(--hover2)}
+.bmmenu .mi.danger:hover{background:var(--tabclose);color:var(--err)}
+.bmmenu .sepm{height:1px;background:var(--bd);margin:4px 2px}
+.bmmenu .hdr{font-size:10.5px;color:var(--mut);padding:4px 9px;text-transform:uppercase;letter-spacing:.6px}
+.bmempty{color:var(--mut);font-size:12px;padding:0 6px}
+
+/* ── find in page ── */
+.findbar{position:absolute;right:14px;top:44px;display:none;align-items:center;gap:6px;
+  background:var(--panel);border:1px solid var(--bd);border-radius:9px;padding:5px 8px;
+  box-shadow:0 12px 34px rgba(0,0,0,.5);z-index:75}
+.findbar.on{display:flex}
+.findbar .fi{font-size:12px;opacity:.7}
+#findInput{background:var(--bg);border:1px solid var(--bd);border-radius:6px;color:var(--txt);
+  padding:5px 8px;font-size:12.5px;width:210px;outline:none;user-select:text}
+#findInput:focus{border-color:var(--accent)}
+.fcount{font-size:11.5px;color:var(--mut);min-width:56px;text-align:center;font-variant-numeric:tabular-nums}
+.fbtn{width:24px;height:24px;border-radius:6px;color:var(--mut);font-size:13px}
+.fbtn:hover{background:var(--hover2);color:var(--txt)}
+.histrow{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--bd);font-size:12px}
+.histrow:last-child{border-bottom:none}
+.histrow .ht{flex:1;min-width:0;cursor:pointer}
+.histrow .ht .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.histrow .ht .u{font-size:10.5px;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.histrow .hw{color:var(--mut);font-size:10.5px;flex:none}
+
+.tab.priv{background:linear-gradient(180deg,rgba(140,90,255,.14),transparent)}
+.tab.priv .t::before{content:'🕶 ';font-size:10px}
+
+/* ── user background behind the browser chrome ── */
+#chromeBg{
+  position:fixed; inset:0; z-index:-2; pointer-events:none;
+  background-position:center; background-size:cover; background-repeat:no-repeat;
+  opacity:0; transition:opacity .25s;
+}
+body.hasbg .tabstrip,
+body.hasbg .omnibar,
+body.hasbg .bmbar{ background:transparent }
+/* a scrim so toolbar text stays readable over a busy image */
+body.hasbg::before{
+  content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
+  background:linear-gradient(180deg, rgba(12,14,19,.72), rgba(12,14,19,.86));
+}
