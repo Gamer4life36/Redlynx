@@ -994,7 +994,7 @@ ipcMain.handle('ai:ask', async (_e, payload) => {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-5',
         max_tokens: 700,
         messages: [{ role: 'user', content: question + String.fromCharCode(10,10) + 'PAGE:' + String.fromCharCode(10) + text }],
       }),

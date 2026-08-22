@@ -6,7 +6,8 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win nsis portable",
-    "pack": "electron-builder --win --dir"
+    "pack": "electron-builder --win --dir",
+    "dist:publish": "electron-builder --win nsis portable --publish always"
   },
   "author": "",
   "license": "MIT",
@@ -49,7 +50,8 @@
       "target": [
         "nsis",
         "portable"
-      ]
+      ],
+      "verifyUpdateCodeSignature": false
     },
     "nsis": {
       "oneClick": false,
