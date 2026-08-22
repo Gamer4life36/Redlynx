@@ -175,7 +175,7 @@ function openPanel(id) {
   if (id === 'panelDownloads') refreshDownloads();
   if (id === 'panelMedia') refreshMedia();
   if (id === 'panelSettings') {
-    refreshSettings(); refreshExtensions();
+    refreshSettings(); refreshExtensions(); refreshPerms();
     api.updateStatus().then(renderUpdate).catch(() => {});
   }
   if (id === 'panelAI') refreshAI();
@@ -367,6 +367,39 @@ async function refreshSettings() {
 }
 $('clearData').onclick = async () => { await api.clearBrowsingData(); toast('Cookies and cache cleared.'); };
 
+// ── site permissions ──────────────────────────────────────────────
+const PERM_NAMES = {
+  media: 'Camera & microphone', geolocation: 'Location', notifications: 'Notifications',
+  midi: 'MIDI', midiSysex: 'MIDI (SysEx)', pointerLock: 'Hide the cursor',
+  openExternal: 'Open other apps', 'window-management': 'Manage windows',
+  'clipboard-read': 'Read the clipboard', 'display-capture': 'Capture the screen',
+  'idle-detection': 'Detect when idle', hid: 'HID devices', serial: 'Serial devices', usb: 'USB devices',
+};
+
+async function refreshPerms() {
+  const host = $('permList');
+  if (!host) return;
+  let items = [];
+  try { items = await api.permList(); } catch (e) {}
+  host.innerHTML = '';
+  if (!items.length) { host.textContent = 'Nothing decided yet.'; return; }
+  items.forEach((x) => {
+    const row = document.createElement('div');
+    row.className = 'item';
+    row.innerHTML = '<div class="meta"><div class="nm"></div><div class="sub"></div></div><button class="btn">Forget</button>';
+    row.querySelector('.nm').textContent = x.host;
+    const sub = row.querySelector('.sub');
+    sub.textContent = (PERM_NAMES[x.permission] || x.permission) + ' — ' + (x.allowed ? 'allowed' : 'blocked');
+    sub.style.color = x.allowed ? 'var(--ok)' : 'var(--err)';
+    row.querySelector('button').onclick = async () => {
+      await api.permForget(x.host, x.permission);
+      toast('Forgotten — this site will ask again.');
+      refreshPerms();
+    };
+    host.appendChild(row);
+  });
+}
+
 // ── updates ───────────────────────────────────────────────────────
 function renderUpdate(u) {
   const line = $('updStatus');
@@ -463,9 +496,13 @@ function showPrompt(p) {
     const nice = { media: 'use your camera or microphone', geolocation: 'know your location', notifications: 'send notifications',
       'display-capture': 'capture your screen', midi: 'use MIDI devices', 'clipboard-read': 'read your clipboard' };
     $('promptTitle').textContent = p.host + ' wants permission';
-    $('promptText').textContent = 'This site is asking to ' + (nice[p.permission] || p.permission) + '. Denied unless you allow it.';
-    addBtn(btns, 'Block', 'deny');
-    addBtn(btns, 'Allow', 'allow', true);
+    $('promptText').textContent = 'This site is asking to ' + (nice[p.permission] || p.permission) +
+      '. Denied unless you allow it. Your answer is remembered for this site — ' +
+      'change it under Settings.';
+    // Both answers stick, which is what stops the same dialog appearing on
+    // every page load. Settings lists them so a choice can be taken back.
+    addBtn(btns, 'Block', 'never');
+    addBtn(btns, 'Allow', 'always', true);
   }
   wrap.classList.add('open');
   wrap._id = p.id;

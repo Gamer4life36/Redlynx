@@ -13,6 +13,11 @@ const path = require('path');
 const fs = require('fs');
 
 let VAULT_FILE = '';
+let PERMS_FILE = '';
+// host + permission -> true/false. Kept out of the vault deliberately: the
+// vault is encrypted because it holds secrets, and a record of which site may
+// use the microphone is not one.
+let sitePerms = {};
 let getPrefs = () => ({});
 let sendUI = () => {};
 const pending = new Map();   // promptId -> record awaiting the user's answer
@@ -55,10 +60,20 @@ function saveVault(v) {
   } catch (e) {}
 }
 
+function loadPerms() {
+  try { return JSON.parse(fs.readFileSync(PERMS_FILE, 'utf8')); } catch (e) { return {}; }
+}
+function savePerms() {
+  try { fs.writeFileSync(PERMS_FILE, JSON.stringify(sitePerms, null, 2)); } catch (e) {}
+}
+const permKey = (host, permission) => host + '|' + permission;
+
 function install(ses, prefsGetter, dataDir, ui) {
   getPrefs = prefsGetter;
   sendUI = ui || (() => {});
   VAULT_FILE = path.join(dataDir, 'vault.bin');
+  PERMS_FILE = path.join(dataDir, 'permissions.json');
+  sitePerms = loadPerms();
   const v = loadVault();
   (v.never || []).forEach((s) => neverSites.add(s));
 
@@ -69,8 +84,13 @@ function install(ses, prefsGetter, dataDir, ui) {
     const origin = (details && details.requestingUrl) || (wc && wc.getURL()) || '';
     let host = origin;
     try { host = new URL(origin).host; } catch (e) {}
+
+    // Asked and answered before: honour it instead of nagging again.
+    const remembered = sitePerms[permKey(host, permission)];
+    if (remembered !== undefined) return callback(!!remembered);
+
     const id = promptSeq++;
-    pending.set(id, { type: 'permission', callback });
+    pending.set(id, { type: 'permission', callback, host, permission });
     sendUI('prompt', { id, type: 'permission', permission, host });
   });
   // The synchronous counterpart. It cannot prompt, so it can only answer for
@@ -125,7 +145,14 @@ function install(ses, prefsGetter, dataDir, ui) {
     pending.delete(id);
 
     if (rec.type === 'permission') {
-      rec.callback(answer === 'allow');
+      const allow = answer === 'allow' || answer === 'always';
+      rec.callback(allow);
+      // "always" and "never" are the ones that stick; a plain allow/block
+      // answers this request only, so a one-off stays a one-off.
+      if (answer === 'always' || answer === 'never') {
+        sitePerms[permKey(rec.host, rec.permission)] = allow;
+        savePerms();
+      }
       return true;
     }
     if (rec.type === 'save') {
@@ -173,6 +200,16 @@ function install(ses, prefsGetter, dataDir, ui) {
     // Most recently saved wins when a site has more than one.
     const best = hits.sort((a, b) => (b.at || 0) - (a.at || 0))[0];
     return { username: best.username || '', value: best.value || '' };
+  });
+
+  ipcMain.handle('perm:list', () => Object.entries(sitePerms).map(([k, v]) => {
+    const i = k.lastIndexOf('|');
+    return { host: k.slice(0, i), permission: k.slice(i + 1), allowed: !!v };
+  }));
+  ipcMain.handle('perm:forget', (_e, { host, permission }) => {
+    delete sitePerms[permKey(host, permission)];
+    savePerms();
+    return true;
   });
 
   ipcMain.handle('vault:list', () => {

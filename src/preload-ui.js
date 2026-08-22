@@ -91,6 +91,10 @@ contextBridge.exposeInMainWorld('redlynx', {
   omniSuggest: (q) => ipcRenderer.invoke('omni:suggest', q),
 
   // extensions
+  // site permissions
+  permList: () => ipcRenderer.invoke('perm:list'),
+  permForget: (host, permission) => ipcRenderer.invoke('perm:forget', { host, permission }),
+
   // updates
   updateStatus: () => ipcRenderer.invoke('update:status'),
   updateCheck: () => ipcRenderer.invoke('update:check'),
