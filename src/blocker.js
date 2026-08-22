@@ -161,13 +161,15 @@ function wireCounter() {
   });
 }
 
-// The library registers its preload with session.registerPreloadScript, which
-// Electron only gained in 35 — this app is on 33, where the equivalent is
-// setPreloads. That call is the *first* thing enableBlockingInSession does, so
-// on 33 it threw before reaching the network filters and the entire blocker
-// silently did nothing: no cosmetic filtering, no request blocking, a shield
-// that always read zero. Shimming the newer name onto the older API lets the
-// whole thing install, and keeps working unchanged once Electron is upgraded.
+// Inert on Electron 35+, which is where registerPreloadScript arrived, and
+// kept only because of what its absence did.
+//
+// The library calls it as the *first* thing in enableBlockingInSession. On 33
+// it did not exist, so the call threw before reaching the network filters and
+// the entire blocker silently did nothing — no cosmetic filtering, no request
+// blocking, a shield that always read zero — because the throw was swallowed
+// by a bare catch. That is a failure worth keeping a guard against, and it
+// costs nothing when the API is present.
 function shimPreloadApi(ses) {
   if (!ses || typeof ses.registerPreloadScript === 'function') return;
   ses.registerPreloadScript = ({ filePath }) => {
