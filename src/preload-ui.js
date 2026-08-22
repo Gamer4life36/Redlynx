@@ -88,6 +88,7 @@ contextBridge.exposeInMainWorld('redlynx', {
   // history
   histSearch: (q) => ipcRenderer.invoke('hist:search', q),
   histSuggest: (q) => ipcRenderer.invoke('hist:suggest', q),
+  omniSuggest: (q) => ipcRenderer.invoke('omni:suggest', q),
   histRemove: (url) => ipcRenderer.invoke('hist:remove', url),
   histClear: (sinceMs) => ipcRenderer.invoke('hist:clear', sinceMs),
 

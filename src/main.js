@@ -1090,6 +1090,58 @@ ipcMain.handle('anon:doh', () => Anon.dohList());
 
 ipcMain.handle('hist:search', (_e, q) => History.search(q));
 ipcMain.handle('hist:suggest', (_e, q) => History.suggest(q));
+
+// ── omnibar suggestions ───────────────────────────────────────────
+// One ranked list, so the dropdown does not have to fetch and merge three
+// sources on every keystroke. The first row is always what Enter would do
+// right now, so the list never disagrees with the keyboard.
+ipcMain.handle('omni:suggest', (_e, raw) => {
+  const q = String(raw || '').trim();
+  if (!q) return [];
+  const out = [];
+  const seen = new Set();
+  const push = (item) => {
+    const key = (item.url || '').replace(/\/+$/, '');
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push(item);
+  };
+
+  const hasScheme = /^[a-z]+:\/\//i.test(q);
+  const looksDomain = /^[\w-]+(\.[\w-]+)+([/?#].*)?$/.test(q) && !/\s/.test(q);
+
+  // What Enter does, spelled out.
+  if (hasScheme || looksDomain) {
+    const url = hasScheme ? q : 'https://' + q;
+    push({ kind: 'url', title: q, url, sub: 'Open this address' });
+  } else {
+    push({ kind: 'search', title: q, url: searchUrl(q), sub: 'Search with ' + engine().name });
+  }
+
+  const needle = q.toLowerCase();
+  // Bookmarks first: the user kept these on purpose.
+  try {
+    loadBM().forEach((n) => {
+      if (out.length > 3 || n.type === 'folder' || !n.url) return;
+      if ((n.title || '').toLowerCase().includes(needle) || n.url.toLowerCase().includes(needle)) {
+        push({ kind: 'bookmark', title: n.title || n.url, url: n.url, sub: 'Bookmark' });
+      }
+    });
+  } catch (e) {}
+
+  try {
+    History.suggest(q, 8).forEach((h) => {
+      if (out.length >= 9) return;
+      push({ kind: 'history', title: h.title || h.url, url: h.url, sub: hostOf(h.url) });
+    });
+  } catch (e) {}
+
+  return out.slice(0, 9);
+});
+
+function hostOf(u) {
+  try { return new URL(u).host.replace(/^www\./, ''); } catch (e) { return u; }
+}
 ipcMain.handle('hist:remove', (_e, url) => { History.remove(url); return true; });
 ipcMain.handle('hist:clear', (_e, sinceMs) => { History.clear(sinceMs); return true; });
 

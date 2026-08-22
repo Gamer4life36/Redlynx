@@ -57,6 +57,67 @@ $('btnSuspendOthers').onclick = async () => { await api.suspendOthers(); toast('
 const url = $('url');
 url.addEventListener('focus', () => { urlFocused = true; url.select(); });
 url.addEventListener('blur', () => { urlFocused = false; renderNav(); });
+// ── omnibar suggestions ───────────────────────────────────────────
+// History and bookmarks have been searchable all along; there was simply
+// nothing showing them. The first row is whatever Enter would do anyway, so
+// arrowing down never contradicts just pressing return.
+const SUG_ICONS = { search: '🔎', url: '🌐', bookmark: '★', history: '🕓' };
+let sugs = [];
+let sugSel = -1;
+let sugSeq = 0;
+
+function positionDrop() {
+  const drop = $('omniDrop');
+  const box = $('url').closest('.urlwrap').getBoundingClientRect();
+  drop.style.left = Math.round(box.left) + 'px';
+  drop.style.width = Math.round(box.width) + 'px';
+  drop.style.top = Math.round(box.bottom + 6) + 'px';
+}
+
+function closeSuggest() {
+  sugs = []; sugSel = -1;
+  $('omniDrop').classList.remove('open');
+  syncOverlay();
+}
+
+function renderSuggest() {
+  const drop = $('omniDrop');
+  if (!sugs.length) return closeSuggest();
+  drop.innerHTML = '';
+  sugs.forEach((s, i) => {
+    const row = document.createElement('div');
+    row.className = 'osug' + (i === sugSel ? ' sel' : '');
+    row.innerHTML = '<div class="oic"></div><div class="otx"><div class="ott"></div><div class="osb"></div></div>';
+    row.querySelector('.oic').textContent = SUG_ICONS[s.kind] || '🌐';
+    row.querySelector('.ott').textContent = s.title;
+    row.querySelector('.osb').textContent = s.sub || s.url;
+    // mousedown, not click: the input's blur would close this first.
+    row.addEventListener('mousedown', (e) => { e.preventDefault(); goTo(s.url); });
+    drop.appendChild(row);
+  });
+  positionDrop();
+  drop.classList.add('open');
+  syncOverlay();
+}
+
+function goTo(target) {
+  closeSuggest();
+  $('url').blur();
+  api.go(target);
+}
+
+async function askSuggest() {
+  const q = $('url').value.trim();
+  if (!q) return closeSuggest();
+  const mine = ++sugSeq;
+  let list = [];
+  try { list = await api.omniSuggest(q); } catch (e) { list = []; }
+  if (mine !== sugSeq) return;          // a newer keystroke already answered
+  sugs = list || [];
+  sugSel = -1;
+  renderSuggest();
+}
+
 // Warm the connection while the user is still typing, so Enter reuses an
 // already-open socket instead of starting DNS and TLS from scratch.
 let warmTimer = null;
@@ -71,9 +132,29 @@ url.addEventListener('input', () => {
   }, 120);
 });
 
+url.addEventListener('input', askSuggest);
+url.addEventListener('blur', () => setTimeout(closeSuggest, 120));
+
 url.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') { api.go(url.value); url.blur(); }
-  if (e.key === 'Escape') { url.value = nav.url; url.blur(); }
+  const open = sugs.length && $('omniDrop').classList.contains('open');
+  if (open && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+    e.preventDefault();
+    sugSel += e.key === 'ArrowDown' ? 1 : -1;
+    if (sugSel < -1) sugSel = sugs.length - 1;
+    if (sugSel >= sugs.length) sugSel = -1;
+    renderSuggest();
+    return;
+  }
+  if (e.key === 'Enter') {
+    // -1 means no row is picked, which is the typed text itself.
+    goTo(open && sugSel >= 0 ? sugs[sugSel].url : url.value);
+    return;
+  }
+  if (e.key === 'Escape') {
+    if (open) { closeSuggest(); return; }
+    url.value = nav.url;
+    url.blur();
+  }
 });
 
 // ── panels ────────────────────────────────────────────────────────
@@ -83,6 +164,7 @@ const PANELS = ['panelDownloads', 'panelMedia', 'panelShield', 'panelSettings', 
 function syncOverlay() {
   const shown = PANELS.some((p) => $(p).classList.contains('open')) ||
                 $('promptWrap').classList.contains('open') ||
+                $('omniDrop').classList.contains('open') ||
                 $('findbar').classList.contains('on');
   try { api.setOverlay(shown); } catch (e) {}
 }
