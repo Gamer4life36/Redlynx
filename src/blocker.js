@@ -40,6 +40,7 @@ let pushNav = () => {};
 let cacheFile = '';
 let lastLoad = { at: 0, source: 'none' };
 let lastError = '';
+let prefsOf = () => ({});
 
 const counts = new Map();      // tabId -> blocked since last navigation
 const wcToTab = new Map();     // webContents.id -> tabId
@@ -126,6 +127,7 @@ async function build({ useCache = true } = {}) {
 
 async function install(ses, getPrefs, dataDir, onChange) {
   pushNav = onChange || (() => {});
+  prefsOf = getPrefs || (() => ({}));
   const prefs = getPrefs();
   enabled = prefs.blockAds !== false || prefs.blockTrackers !== false;
   // Cache name is tied to the list stack — changing LISTS invalidates it.
@@ -148,6 +150,7 @@ async function install(ses, getPrefs, dataDir, onChange) {
   boundSession = ses;
   wireCounter();
   if (enabled) enable();
+  scheduleRefresh();
 }
 
 function wireCounter() {
@@ -250,6 +253,33 @@ function refresh(prefs) {
   if (enabled) enable(); else disable();
 }
 
+// Filter lists go stale, and stale is how ads come back. The engine is cached
+// so startup does not wait on ten downloads, but nothing was ever refreshing
+// that cache — it could sit unchanged for months while YouTube changed tactics
+// weekly. uBlock Origin ships counter-patches within hours; this is what makes
+// the browser actually receive them.
+//
+// Verified: refreshing turned a YouTube pre-roll that was playing into one
+// that is blocked, with no other change.
+const REFRESH_EVERY = 12 * 60 * 60 * 1000;
+
+function cacheAgeMs() {
+  try { return Date.now() - fs.statSync(cacheFile).mtimeMs; } catch (e) { return Infinity; }
+}
+
+function scheduleRefresh() {
+  const age = cacheAgeMs();
+  // Overdue lists still wait a minute, so a cold start is never held up by it.
+  const due = age >= REFRESH_EVERY ? 60000 : (REFRESH_EVERY - age);
+  setTimeout(async () => {
+    try {
+      const r = await refreshLists();
+      console.log('[blocker] lists refreshed:', r.ok ? r.source : r.error);
+    } catch (e) {}
+    scheduleRefresh();
+  }, due);
+}
+
 // Pull fresh lists on demand — the answer when YouTube changes tactics.
 async function refreshLists() {
   if (!ElectronBlocker) return { ok: false, error: 'blocker unavailable' };
@@ -286,7 +316,11 @@ function setScriptletRange(r) {
 // depends on the host, so compute it once and hand back the same array.
 const scriptletCache = new Map();
 function cacheKey(url) {
-  try { return new URL(url).hostname; } catch (e) { return url; }
+  // The setting below changes what this returns, so it has to be part of the
+  // key. Without it a settings change silently kept serving the old answer —
+  // which is exactly how a test of that setting once lied to me.
+  const yt = (prefsOf() || {}).blockYouTubeAds !== false ? '1' : '0';
+  try { return new URL(url).hostname + '|' + yt; } catch (e) { return url + '|' + yt; }
 }
 
 function scriptletsFor(url) {
@@ -308,16 +342,24 @@ function scriptletsFor(url) {
 // single rule, 12.5s before the first frame against 0.4s without it, on every
 // run. Ad blocking is not weakened by dropping it — adPlacements and
 // playerAds are what actually schedule the ads and both are still pruned.
-// Matched as plain substrings — the compiled rule text contains a literal
-// backslash before the dot, which a regex would only obscure.
-const SCRIPTLET_SKIP = [
-  {
-    why: 'set-constant on adSlots stalls YouTube playback ~12s',
-    hit: (code) => code.indexOf('setConstant') !== -1 &&
-                   code.indexOf('ytInitialPlayerResponse') !== -1 &&
-                   code.indexOf('adSlots') !== -1,
-  },
-];
+// uBlock Origin blocks YouTube's pre-roll by neutralising
+// ytInitialPlayerResponse.adSlots. That works — and YouTube answers it by
+// making the player sit idle for a fixed ~12.5s before the real video starts.
+//
+// Measured every way round: with uBO's rule, with a hand-written equivalent,
+// deleting the key instead of emptying it, and with every other scriptlet
+// disabled. The gap is always ~12.5s and nothing is requested during it, so it
+// is a penalty YouTube imposes rather than anything this code causes.
+//
+// Blocking stays the default — an advert costs about as long and you also
+// watch it — but it is a real cost, so it is a setting rather than a decision
+// made here. Matched as plain substrings: the compiled rule text contains a
+// literal backslash before the dot, which a regex would only obscure.
+function isYouTubeAdRule(code) {
+  return code.indexOf('ytInitialPlayerResponse') !== -1 &&
+         code.indexOf('adSlots') !== -1;
+}
+
 
 function computeScriptlets(url) {
   if (!blocker || !enabled) return [];
@@ -344,9 +386,8 @@ function computeScriptlets(url) {
       getRulesFromDOM: false,
     });
     if (active === false) return [];
-    const all = (scripts || []).filter(
-      (code) => !SCRIPTLET_SKIP.some((s) => s.hit(code))
-    );
+    const blockYt = (prefsOf() || {}).blockYouTubeAds !== false;
+    const all = (scripts || []).filter((code) => blockYt || !isYouTubeAdRule(code));
     return scriptletRange ? all.slice(scriptletRange[0], scriptletRange[1]) : all;
   } catch (e) { return []; }
 }

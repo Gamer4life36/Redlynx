@@ -177,6 +177,7 @@ const DEFAULT_PREFS = {
   userscripts: { classicImages: true, maxQuality: true },   // per-site usability fixes
   hideAiOverview: true,        // Google's AI Overview — off by default, it delays the real results
   autofillPasswords: true,     // put a saved password back in; saving still asks first
+  blockYouTubeAds: true,       // YouTube answers this with a ~12s wait; see blocker.js
   cleanPages: true,           // strip page footers / sticky clutter
   theme: 'dark',              // dark | midnight | light
   accent: '#e63946',           // UI accent colour
@@ -822,7 +823,12 @@ function startDebugServer() {
           const all = Blocker.scriptletsFor(b.url || 'https://www.youtube.com/watch?v=x');
           const one = String(all[b.dump] || '');
           // the scriptlet name and its arguments sit at the very end
-          return send(res, 200, { ok: true, index: b.dump, tail: one.slice(-260) });
+          return send(res, 200, {
+            ok: true, index: b.dump,
+            len: one.length,
+            head: one.slice(0, 700),
+            tail: one.slice(-260),
+          });
         }
         const probe = b.url ? Blocker.scriptletsFor(b.url) : [];
         return send(res, 200, {

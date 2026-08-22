@@ -41,19 +41,33 @@ const { ipcRenderer } = require('electron');
     }
   } catch (e) {}
 
+  // Every scriptlet opens by declaring `scriptletGlobals`, and rules aimed at
+  // the same object coordinate through it — set-constant on
+  // ytInitialPlayerResponse.adPlacements, .playerAds and .adSlots all chain
+  // off one shared registry.
+  //
+  // Wrapping each scriptlet in its own scope stopped them clobbering each
+  // other's helpers, but it also handed each one a private registry, so they
+  // stopped coordinating: two of the three chained rules took effect and the
+  // third silently did not. That is how YouTube pre-rolls came back.
+  //
+  // So: one shared registry on the page, and the per-scriptlet declaration
+  // stripped so the body resolves to that instead of a local copy. Helpers
+  // stay scoped per scriptlet, which is all the wrapping was ever for.
+  // Matched literally. A regex here is a trap: the declaration contains its
+  // own `{}`, so the obvious [^}]* stops early and leaves `; };` behind —
+  // a syntax error that kills the scriptlet silently.
+  const PRELUDE = "if (typeof scriptletGlobals === 'undefined') { var scriptletGlobals = {}; };";
+  let sharedReady = false;
+
   let done = 0;
-  const inject = (code) => {
+  const inject = (code, raw) => {
     // A <script> element runs synchronously in the page's own world the
     // moment it is attached, which is what makes this beat the site's code.
     const el = document.createElement('script');
-    // Each scriptlet is wrapped in its own function scope. They are compiled
-    // to run one per injection, and every one of them declares the same
-    // top-level names — "scriptletGlobals" plus a set of helpers. Injected as
-    // plain sibling scripts they share a global scope, so the second one
-    // silently replaces the first one's helpers while the first one's hooks
-    // are still installed and calling them. That mismatch is what took the
-    // page down: individually any of these is fine, any two together were not.
-    el.textContent = asScript('(function(){' + code + '\n})();');
+    el.textContent = asScript(
+      raw ? code : '(function(){' + code.replace(PRELUDE, '') + '\n})();'
+    );
     const host = document.documentElement || document.head || document.body;
     if (!host) return false;
     host.appendChild(el);
@@ -63,6 +77,10 @@ const { ipcRenderer } = require('electron');
   };
 
   const runAll = () => {
+    if (!sharedReady) {
+      sharedReady = true;
+      try { inject('window.scriptletGlobals = window.scriptletGlobals || {};', true); } catch (e) {}
+    }
     scripts.forEach((code) => { try { inject(code); } catch (e) {} });
   };
 
