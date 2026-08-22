@@ -48,10 +48,12 @@ app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-features', 'CanvasOopRasterization,ParallelDownloading');
-// Tabs on the same site share a renderer instead of each starting a fresh one.
-// Isolation between different sites is untouched — that is the boundary that
-// matters — but ten tabs of one site stop costing ten process baselines.
-app.commandLine.appendSwitch('process-per-site');
+// NOT process-per-site. It saved real memory in a benchmark — 2384MB/13
+// processes down to 1880MB/9 on the same five tabs — but sharing one renderer
+// between same-site tabs means one hang or crash takes all of them, and heavy
+// SPAs stacked in a single process hit that quickly: tabs froze and YouTube
+// reloaded itself mid-playback. Isolation per tab is worth more than 21% of
+// memory on a machine that is not short of it.
 app.commandLine.appendSwitch('disable-features', 'Translate,MediaRouter,OptimizationHints,DialMediaRouteProvider');
 // Background timer throttling stays ON — that is Chromium's default and it is
 // what keeps the foreground tab fast. This line used to disable it, passing
@@ -573,6 +575,34 @@ function createTab(url, opts) {
   // it is gone the moment a new one commits. The keys have to be dropped with
   // it, or the "already inserted" guards below skip re-inserting and the
   // styling silently applies to the first page in a tab and nothing after it.
+  // A renderer dying used to leave a blank view with no explanation. Say what
+  // happened, and put the page back once — recovering silently forever would
+  // hide a crash loop, so a second death in quick succession is left alone
+  // for the user to reload deliberately.
+  wc.on('render-process-gone', (_e, details) => {
+    const reason = (details && details.reason) || 'unknown';
+    console.error('[tab ' + id + '] renderer gone:', reason, 'exit', details && details.exitCode);
+    if (reason === 'clean-exit' || reason === 'killed') return;
+    const now = Date.now();
+    const recent = t.lastCrashAt && (now - t.lastCrashAt) < 20000;
+    t.lastCrashAt = now;
+    if (recent) {
+      sendUI('toast', { text: 'This page keeps crashing — reload when you are ready.', kind: 'err' });
+      return;
+    }
+    sendUI('toast', { text: 'Page crashed (' + reason + ') — reloading.', kind: 'err' });
+    const back = t.url;
+    setTimeout(() => { try { wc.loadURL(back); } catch (e) {} }, 250);
+  });
+
+  // A page can wedge without the process dying. Worth surfacing, since it is
+  // otherwise indistinguishable from the browser itself being slow.
+  wc.on('unresponsive', () => {
+    console.error('[tab ' + id + '] unresponsive:', t.url);
+    sendUI('toast', { text: 'A page has stopped responding.', kind: 'err' });
+  });
+  wc.on('responsive', () => console.log('[tab ' + id + '] responsive again'));
+
   // A video going fullscreen: take the window fullscreen too and let the page
   // have the whole of it.
   wc.on('enter-html-full-screen', () => enterFullscreen(id));
