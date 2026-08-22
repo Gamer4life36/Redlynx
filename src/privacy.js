@@ -149,6 +149,32 @@ function install(ses, prefsGetter, dataDir, ui) {
     return false;
   });
 
+  // ── filling a saved credential back in ──
+  // The host is taken from the frame that asked, never from anything the page
+  // passed us: a page that could name its own host could name someone else's
+  // and walk out with their password. Top frame only, for the same reason —
+  // an embedded third-party iframe must not be able to ask.
+  ipcMain.handle('vault:match', (e) => {
+    const p = getPrefs() || {};
+    if (p.autofillPasswords === false) return null;
+    let host = '';
+    try {
+      const frame = e.senderFrame;
+      if (!frame || frame.parent) return null;         // not the top document
+      host = new URL(frame.url).host;
+    } catch (err) { return null; }
+    if (!host) return null;
+
+    const v = loadVault();
+    const hits = (v.entries || []).filter(
+      (x) => x.host === host && (x.kind || 'password') === 'password'
+    );
+    if (!hits.length) return null;
+    // Most recently saved wins when a site has more than one.
+    const best = hits.sort((a, b) => (b.at || 0) - (a.at || 0))[0];
+    return { username: best.username || '', value: best.value || '' };
+  });
+
   ipcMain.handle('vault:list', () => {
     const v = loadVault();
     return (v.entries || []).map((e) => ({ host: e.host, kind: e.kind, username: e.username, at: e.at }));

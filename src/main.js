@@ -156,6 +156,7 @@ const DEFAULT_PREFS = {
   showBookmarksBar: true,     // Chrome-style bookmarks strip with folders
   userscripts: { classicImages: true, maxQuality: true },   // per-site usability fixes
   hideAiOverview: true,        // Google's AI Overview — off by default, it delays the real results
+  autofillPasswords: true,     // put a saved password back in; saving still asks first
   cleanPages: true,           // strip page footers / sticky clutter
   theme: 'dark',              // dark | midnight | light
   accent: '#e63946',           // UI accent colour

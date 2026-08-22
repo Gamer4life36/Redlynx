@@ -209,6 +209,72 @@ function reportSensitive(form) {
   } catch (e) {}
 }
 
+// ── filling a saved password back in ────────────────────────────
+// The browser has always offered to save one and then had no way to put it
+// back, which makes the whole feature a dead end. This fills the login form
+// when the vault has an entry for this exact host.
+//
+// Frameworks track their own copy of an input's value, so assigning .value
+// alone leaves React and friends convinced the field is still empty and the
+// submit fails. Setting it through the native setter and then firing the
+// events a real keystroke would fire is what makes it stick.
+function setValue(el, value) {
+  try {
+    const proto = el instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+    setter.call(el, value);
+  } catch (e) {
+    el.value = value;
+  }
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function usernameFieldFor(pw) {
+  const form = pw.form || document;
+  const inputs = [...form.querySelectorAll('input')];
+  const named = inputs.find((i) =>
+    i.type !== 'password' && !i.disabled && i.type !== 'hidden' &&
+    /user|email|login|account|name/i.test(i.name + ' ' + i.id + ' ' + i.autocomplete));
+  if (named) return named;
+  // Otherwise the visible text field immediately before the password.
+  const before = inputs.slice(0, inputs.indexOf(pw)).reverse();
+  return before.find((i) => /^(text|email|tel)$/.test(i.type) && !i.disabled) || null;
+}
+
+let filled = false;
+async function autofill() {
+  if (filled) return;
+  const pw = [...document.querySelectorAll('input[type="password"]')]
+    .find((i) => !i.disabled && i.offsetParent !== null);
+  if (!pw || pw.value) return;                     // nothing to fill, or already has one
+  let cred = null;
+  try { cred = await ipcRenderer.invoke('vault:match'); } catch (e) { return; }
+  if (!cred || !cred.value) return;
+
+  filled = true;
+  const user = usernameFieldFor(pw);
+  if (user && !user.value && cred.username) setValue(user, cred.username);
+  setValue(pw, cred.value);
+}
+
+// Login forms often appear after load — a modal, a route change, a lazy chunk.
+window.addEventListener('DOMContentLoaded', () => {
+  autofill();
+  setTimeout(autofill, 800);
+  setTimeout(autofill, 2500);
+  try {
+    const mo = new MutationObserver(() => {
+      clearTimeout(window.__rlxFillT);
+      window.__rlxFillT = setTimeout(autofill, 250);
+    });
+    mo.observe(document.documentElement, { childList: true, subtree: true });
+    setTimeout(() => mo.disconnect(), 30000);
+  } catch (e) {}
+});
+
 document.addEventListener('submit', (e) => {
   if (e.target && e.target.tagName === 'FORM') reportSensitive(e.target);
 }, true);
