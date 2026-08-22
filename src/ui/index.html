@@ -106,6 +106,7 @@
       <div class="sep"></div>
       <label class="row"><input type="checkbox" data-pref="askBeforeSaving"> <span>Ask before saving passwords or cards</span></label>
       <div class="hint">Nothing sensitive is ever written to disk unless you say yes.</div>
+      <div class="sep"></div>
       <label class="row"><input type="checkbox" data-pref="autofillPasswords"> <span>Fill saved passwords automatically</span></label>
       <div class="hint">Only on the exact site it was saved for, and never inside an embedded
         frame. Saved entries are listed under Settings, where you can forget any of them.</div>
@@ -268,6 +269,13 @@
         <label class="row"><input type="checkbox" data-pin="suspend"> <span>💤 Suspend others</span></label>
       </div>
       <div class="hint">Unpinned tools still work — open them from here, or with their shortcuts (Ctrl+J downloads).</div>
+      <div class="sep"></div>
+      <div class="row"><b>Extensions</b></div>
+      <div id="extList" class="mut">None loaded.</div>
+      <div class="row" style="gap:8px"><button class="btn" id="extAdd">+ Add extension folder</button></div>
+      <div class="hint">Unpacked extensions only — pick the folder containing manifest.json.
+        A .crx has to be unzipped first. Electron supports a large part of the extension
+        API but not all of it, so something unusual may not work.</div>
       <div class="sep"></div>
       <label class="row"><input type="checkbox" data-pref="showBookmarksBar"> <span>Show bookmarks bar</span></label>
       <div class="hint">Star a page to add it. Right-click anything on the bar to rename, delete, or file it into a folder.</div>

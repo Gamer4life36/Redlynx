@@ -89,6 +89,11 @@ contextBridge.exposeInMainWorld('redlynx', {
   histSearch: (q) => ipcRenderer.invoke('hist:search', q),
   histSuggest: (q) => ipcRenderer.invoke('hist:suggest', q),
   omniSuggest: (q) => ipcRenderer.invoke('omni:suggest', q),
+
+  // extensions
+  extList: () => ipcRenderer.invoke('ext:list'),
+  extAdd: () => ipcRenderer.invoke('ext:add'),
+  extRemove: (id) => ipcRenderer.invoke('ext:remove', id),
   histRemove: (url) => ipcRenderer.invoke('hist:remove', url),
   histClear: (sinceMs) => ipcRenderer.invoke('hist:clear', sinceMs),
 

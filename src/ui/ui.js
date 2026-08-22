@@ -174,7 +174,7 @@ function openPanel(id) {
   syncOverlay();
   if (id === 'panelDownloads') refreshDownloads();
   if (id === 'panelMedia') refreshMedia();
-  if (id === 'panelSettings') refreshSettings();
+  if (id === 'panelSettings') { refreshSettings(); refreshExtensions(); }
   if (id === 'panelAI') refreshAI();
   if (id === 'panelGX') refreshGX();
   if (id === 'panelFavs') refreshFavs();
@@ -363,6 +363,50 @@ async function refreshSettings() {
   });
 }
 $('clearData').onclick = async () => { await api.clearBrowsingData(); toast('Cookies and cache cleared.'); };
+
+// ── extensions ────────────────────────────────────────────────────
+async function refreshExtensions() {
+  const host = $('extList');
+  if (!host) return;
+  let r = { items: [], failures: [] };
+  try { r = await api.extList(); } catch (e) {}
+  host.innerHTML = '';
+  if (!r.items.length && !r.failures.length) {
+    host.textContent = 'None loaded.';
+    return;
+  }
+  r.items.forEach((x) => {
+    const row = document.createElement('div');
+    row.className = 'item';
+    row.innerHTML = '<div class="meta"><div class="nm"></div><div class="sub"></div></div><button class="btn">Remove</button>';
+    row.querySelector('.nm').textContent = x.name + (x.version ? ' ' + x.version : '');
+    row.querySelector('.sub').textContent = x.path;
+    row.querySelector('button').onclick = async () => {
+      await api.extRemove(x.id);
+      toast('Removed — restart to fully unload.');
+      refreshExtensions();
+    };
+    host.appendChild(row);
+  });
+  // A folder that moved or was deleted is said out loud, not dropped quietly.
+  r.failures.forEach((f) => {
+    const row = document.createElement('div');
+    row.className = 'item';
+    row.innerHTML = '<div class="meta"><div class="nm"></div><div class="sub"></div></div>';
+    row.querySelector('.nm').textContent = 'Failed to load';
+    row.querySelector('.nm').style.color = 'var(--err)';
+    row.querySelector('.sub').textContent = f.path + ' — ' + f.error;
+    host.appendChild(row);
+  });
+}
+
+$('extAdd').onclick = async () => {
+  const r = await api.extAdd();
+  if (r && r.canceled) return;
+  toast(r && r.ok ? ('Loaded ' + r.name) : ('Could not load: ' + ((r && r.error) || 'unknown')),
+        r && r.ok ? '' : 'err');
+  refreshExtensions();
+};
 
 // ── ask-first prompts ─────────────────────────────────────────────
 function showPrompt(p) {

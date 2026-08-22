@@ -21,6 +21,7 @@ const Downloads = require('./downloads');
 const Privacy = require('./privacy');
 const GX = require('./gx');
 const History = require('./history');
+const Extensions = require('./extensions');
 const Menus = require('./menus');
 const Anon = require('./anon');
 const Userscripts = require('./userscripts');
@@ -840,11 +841,31 @@ app.whenReady().then(async () => {
   Blocker.install(ses, () => prefs, DATA_DIR, pushNav)
     .then(() => pushNav())
     .catch((e) => console.error('[blocker] install failed:', e && e.message));
+  // Extensions have to be re-loaded on every boot; Electron does not persist
+  // them across restarts the way Chrome does.
+  Extensions.install(ses, DATA_DIR)
+    .then((r) => {
+      if (r.items.length) console.log('[extensions] loaded', r.items.map((x) => x.name).join(', '));
+    })
+    .catch((e) => console.error('[extensions] install failed:', e && e.message));
   app.on('activate', () => { if (!win) createWindow(); });
 });
 app.on('window-all-closed', () => { saveSession(); if (process.platform !== 'darwin') app.quit(); });
 
 // ── IPC from the browser chrome UI ────────────────────────────────
+// ── extensions ────────────────────────────────────────────────────
+ipcMain.handle('ext:list', () => Extensions.list());
+ipcMain.handle('ext:remove', (_e, id) => Extensions.remove(id));
+ipcMain.handle('ext:add', async () => {
+  const r = await dialog.showOpenDialog(win, {
+    title: 'Choose an unpacked extension folder',
+    message: 'Pick the folder that contains manifest.json',
+    properties: ['openDirectory'],
+  });
+  if (r.canceled || !r.filePaths.length) return { ok: false, canceled: true };
+  return Extensions.add(r.filePaths[0]);
+});
+
 ipcMain.handle('tab:new', (_e, url) => createTab(url || newTabUrl(), {}));
 ipcMain.handle('tab:close', (_e, id) => closeTab(id));
 ipcMain.handle('tab:activate', (_e, id) => setActive(id));
