@@ -876,6 +876,24 @@ ipcMain.handle('ext:add', async () => {
 
 ipcMain.handle('tab:new', (_e, url) => createTab(url || newTabUrl(), {}));
 ipcMain.handle('tab:close', (_e, id) => closeTab(id));
+
+// Tab order is the Map's insertion order, so reordering means rebuilding it.
+// Session restore walks the same order, which is what makes a drag survive a
+// restart rather than snapping back.
+ipcMain.handle('tab:move', (_e, { id, toIndex }) => {
+  const ids = [...tabs.keys()];
+  const from = ids.indexOf(id);
+  if (from < 0) return false;
+  ids.splice(from, 1);
+  const to = Math.max(0, Math.min(ids.length, Number(toIndex) || 0));
+  ids.splice(to, 0, id);
+  const rebuilt = ids.map((k) => [k, tabs.get(k)]);
+  tabs.clear();
+  rebuilt.forEach(([k, v]) => tabs.set(k, v));
+  pushTabs();
+  saveSession();
+  return true;
+});
 ipcMain.handle('tab:activate', (_e, id) => setActive(id));
 ipcMain.handle('tab:suspend', (_e, id) => suspendTab(id));
 ipcMain.handle('tab:pin', (_e, id) => { const t = tabs.get(id); if (t) { t.pinned = !t.pinned; pushTabs(); } });

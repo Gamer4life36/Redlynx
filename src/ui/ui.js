@@ -8,10 +8,17 @@ let prefs = {};
 let urlFocused = false;
 
 // ── tabs ──────────────────────────────────────────────────────────
+let dragId = null;
+
+function clearDropMarks() {
+  document.querySelectorAll('.tab.dropL, .tab.dropR')
+    .forEach((n) => n.classList.remove('dropL', 'dropR'));
+}
+
 function renderTabs() {
   const host = $('tabs');
   host.innerHTML = '';
-  state.tabs.forEach((t) => {
+  state.tabs.forEach((t, index) => {
     const el = document.createElement('div');
     el.className = 'tab' + (t.id === state.activeId ? ' active' : '') + (t.suspended ? ' sus' : '') + (t.private ? ' priv' : '');
     el.title = (t.suspended ? '[suspended] ' : '') + (t.title || '') + '\n' + (t.url || '');
@@ -24,6 +31,39 @@ function renderTabs() {
       e.preventDefault();
       if (t.id === state.activeId) api.pinTab(t.id); else api.suspendTab(t.id);
     };
+
+    // Drag to reorder. The drop side is decided by which half of the tab the
+    // pointer is over, so a drag reads the same way it looks.
+    el.draggable = true;
+    el.addEventListener('dragstart', (e) => {
+      dragId = t.id;
+      el.classList.add('dragging');
+      try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(t.id)); } catch (err) {}
+    });
+    el.addEventListener('dragend', () => { dragId = null; el.classList.remove('dragging'); clearDropMarks(); });
+    el.addEventListener('dragover', (e) => {
+      if (dragId === null || dragId === t.id) return;
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      const after = e.clientX > r.left + r.width / 2;
+      clearDropMarks();
+      el.classList.add(after ? 'dropR' : 'dropL');
+    });
+    el.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      if (dragId === null || dragId === t.id) return;
+      const r = el.getBoundingClientRect();
+      const after = e.clientX > r.left + r.width / 2;
+      const fromIndex = state.tabs.findIndex((x) => x.id === dragId);
+      let to = index + (after ? 1 : 0);
+      // Removing the dragged tab first shifts everything after it left by one.
+      if (fromIndex > -1 && fromIndex < to) to -= 1;
+      clearDropMarks();
+      const moving = dragId;
+      dragId = null;
+      await api.moveTab(moving, to);
+    });
+
     host.appendChild(el);
   });
 }

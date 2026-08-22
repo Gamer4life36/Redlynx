@@ -37,6 +37,11 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 .tab:hover{background:var(--hover);color:var(--txt)}
 .tab.active{background:var(--chrome);border-color:var(--bd);color:var(--txt);box-shadow:0 -2px 0 var(--accent) inset}
 .tab .t{overflow:hidden;text-overflow:ellipsis;font-size:12.5px}
+/* dragging a tab: the one being moved fades, and the gap it would drop into
+   is shown as a line rather than by shuffling everything around mid-drag */
+.tab.dragging{opacity:.4}
+.tab.dropL{box-shadow:inset 2px 0 0 var(--accent)}
+.tab.dropR{box-shadow:inset -2px 0 0 var(--accent)}
 .tab .dot{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none}
 .tab.sus .t{opacity:.5;font-style:italic}
 .tab .cl{opacity:0;font-size:14px;line-height:1;padding:2px 4px;border-radius:5px;flex:none}

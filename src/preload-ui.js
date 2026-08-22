@@ -91,6 +91,8 @@ contextBridge.exposeInMainWorld('redlynx', {
   omniSuggest: (q) => ipcRenderer.invoke('omni:suggest', q),
 
   // extensions
+  moveTab: (id, toIndex) => ipcRenderer.invoke('tab:move', { id, toIndex }),
+
   // site permissions
   permList: () => ipcRenderer.invoke('perm:list'),
   permForget: (host, permission) => ipcRenderer.invoke('perm:forget', { host, permission }),
