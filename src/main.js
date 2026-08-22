@@ -22,6 +22,7 @@ const Privacy = require('./privacy');
 const GX = require('./gx');
 const History = require('./history');
 const Extensions = require('./extensions');
+const Updater = require('./updater');
 const Menus = require('./menus');
 const Anon = require('./anon');
 const Userscripts = require('./userscripts');
@@ -843,6 +844,7 @@ app.whenReady().then(async () => {
     .catch((e) => console.error('[blocker] install failed:', e && e.message));
   // Extensions have to be re-loaded on every boot; Electron does not persist
   // them across restarts the way Chrome does.
+  Updater.install((ch, payload) => sendUI(ch, payload));
   Extensions.install(ses, DATA_DIR)
     .then((r) => {
       if (r.items.length) console.log('[extensions] loaded', r.items.map((x) => x.name).join(', '));
@@ -853,6 +855,12 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => { saveSession(); if (process.platform !== 'darwin') app.quit(); });
 
 // ── IPC from the browser chrome UI ────────────────────────────────
+// ── updates ───────────────────────────────────────────────────────
+ipcMain.handle('update:status', () => Updater.status());
+ipcMain.handle('update:check', () => Updater.check());
+ipcMain.handle('update:download', () => Updater.download());
+ipcMain.handle('update:install', () => Updater.installNow());
+
 // ── extensions ────────────────────────────────────────────────────
 ipcMain.handle('ext:list', () => Extensions.list());
 ipcMain.handle('ext:remove', (_e, id) => Extensions.remove(id));

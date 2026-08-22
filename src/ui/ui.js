@@ -174,7 +174,10 @@ function openPanel(id) {
   syncOverlay();
   if (id === 'panelDownloads') refreshDownloads();
   if (id === 'panelMedia') refreshMedia();
-  if (id === 'panelSettings') { refreshSettings(); refreshExtensions(); }
+  if (id === 'panelSettings') {
+    refreshSettings(); refreshExtensions();
+    api.updateStatus().then(renderUpdate).catch(() => {});
+  }
   if (id === 'panelAI') refreshAI();
   if (id === 'panelGX') refreshGX();
   if (id === 'panelFavs') refreshFavs();
@@ -363,6 +366,41 @@ async function refreshSettings() {
   });
 }
 $('clearData').onclick = async () => { await api.clearBrowsingData(); toast('Cookies and cache cleared.'); };
+
+// ── updates ───────────────────────────────────────────────────────
+function renderUpdate(u) {
+  const line = $('updStatus');
+  const act = $('updAction');
+  if (!line || !u) return;
+  act.style.display = 'none';
+  const v = 'Redlynx ' + (u.current || '?');
+  if (u.status === 'checking')      line.textContent = 'Checking…';
+  else if (u.status === 'available') {
+    line.textContent = 'Version ' + u.version + ' is available. You are on ' + u.current + '.';
+    act.textContent = 'Download update';
+    act.style.display = '';
+    act.onclick = async () => { renderUpdate(await api.updateDownload()); };
+  } else if (u.status === 'downloading') {
+    line.textContent = 'Downloading… ' + (u.percent || 0) + '%';
+  } else if (u.status === 'ready') {
+    line.textContent = 'Version ' + u.version + ' is ready. It installs when you quit.';
+    act.textContent = 'Restart and install';
+    act.style.display = '';
+    act.onclick = () => api.updateInstall();
+  } else if (u.status === 'unpackaged') {
+    line.textContent = v + ' — running from source, so there is nothing to update.';
+  } else if (u.status === 'error') {
+    line.textContent = 'Could not check: ' + u.error;
+  } else {
+    line.textContent = v + ' — up to date.';
+  }
+}
+
+$('updCheck').onclick = async () => {
+  renderUpdate({ status: 'checking' });
+  renderUpdate(await api.updateCheck());
+};
+api.onUpdate((u) => renderUpdate(u));
 
 // ── extensions ────────────────────────────────────────────────────
 async function refreshExtensions() {

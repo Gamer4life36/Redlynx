@@ -5,14 +5,57 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win portable"
+    "dist": "electron-builder --win nsis portable",
+    "pack": "electron-builder --win --dir"
   },
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^43.4.1"
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3"
   },
   "dependencies": {
-    "@ghostery/adblocker-electron": "^2.5.0"
+    "@ghostery/adblocker-electron": "^2.5.0",
+    "electron-updater": "^6.8.9"
+  },
+  "build": {
+    "appId": "com.redlynx.browser",
+    "productName": "Redlynx",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Gamer4life36",
+        "repo": "Redlynx"
+      }
+    ],
+    "files": [
+      "src/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "branding",
+        "to": "branding",
+        "filter": [
+          "*.ico",
+          "*.png"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "branding/icon-3-redline-eye.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Redlynx"
+    }
   }
 }

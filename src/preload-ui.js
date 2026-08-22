@@ -91,6 +91,13 @@ contextBridge.exposeInMainWorld('redlynx', {
   omniSuggest: (q) => ipcRenderer.invoke('omni:suggest', q),
 
   // extensions
+  // updates
+  updateStatus: () => ipcRenderer.invoke('update:status'),
+  updateCheck: () => ipcRenderer.invoke('update:check'),
+  updateDownload: () => ipcRenderer.invoke('update:download'),
+  updateInstall: () => ipcRenderer.invoke('update:install'),
+  onUpdate: on('update'),
+
   extList: () => ipcRenderer.invoke('ext:list'),
   extAdd: () => ipcRenderer.invoke('ext:add'),
   extRemove: (id) => ipcRenderer.invoke('ext:remove', id),
