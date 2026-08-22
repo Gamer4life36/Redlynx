@@ -54,9 +54,12 @@ function script() {
     var mins = Math.max(1, Math.round((article.length || 0) / 1100));
 
     document.documentElement.setAttribute('data-rlx-reader', '1');
+    // replaceChildren rather than innerHTML: sites that send
+    // "require-trusted-types-for 'script'" also guard innerHTML, and YouTube
+    // is one of them. Nothing here needs to parse a string anyway.
     // Clearing head drops the <title> with everything else, which would leave
     // the tab reading "New tab" for an article that plainly has a name.
-    document.head.innerHTML = '';
+    document.head.replaceChildren();
     var ttl = document.createElement('title');
     ttl.textContent = title;
     document.head.appendChild(ttl);
@@ -93,12 +96,27 @@ function script() {
     wrap.appendChild(h);
     wrap.appendChild(meta);
 
+    // Readability hands back a string of HTML. Parsing it in a detached
+    // document and adopting the nodes keeps the live page out of it, and the
+    // parsed document is inert — nothing in it runs.
+    //
+    // Sites that enforce Trusted Types guard DOMParser as well as innerHTML,
+    // so the string goes through a policy of our own first. The content came
+    // from Readability's sanitiser, not from us trusting the page.
+    var toHTML = function (x) { return x; };
+    try {
+      if (window.trustedTypes && window.trustedTypes.createPolicy) {
+        var pol = window.trustedTypes.createPolicy('rlx-reader', { createHTML: function (x) { return x; } });
+        toHTML = function (x) { return pol.createHTML(x); };
+      }
+    } catch (e) {}
+
     var body = document.createElement('div');
-    body.innerHTML = article.content;
+    var parsed = new DOMParser().parseFromString(toHTML(article.content), 'text/html');
+    while (parsed.body.firstChild) body.appendChild(document.adoptNode(parsed.body.firstChild));
     wrap.appendChild(body);
 
-    document.body.innerHTML = '';
-    document.body.appendChild(wrap);
+    document.body.replaceChildren(wrap);
     window.scrollTo(0, 0);
     return 'ok';
   } catch (e) {

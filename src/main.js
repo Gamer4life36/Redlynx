@@ -13,7 +13,13 @@ const fs = require('fs');
 
 process.on('uncaughtException', (e) => console.error('[redlynx]', e));
 process.on('unhandledRejection', (e) => console.error('[redlynx]', e));
-function blog() {}   // boot tracing retired
+// Boot tracing, off unless asked for. Startup is the one bit of lag you feel
+// on every single launch, so it needs to stay measurable.
+const BOOT_T0 = Date.now();
+function blog(msg) {
+  if (!process.env.REDLYNX_BOOT) return;
+  console.log('[boot +' + String(Date.now() - BOOT_T0).padStart(5) + 'ms] ' + msg);
+}
 
 
 const Blocker = require('./blocker');
@@ -42,8 +48,17 @@ app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-features', 'CanvasOopRasterization,ParallelDownloading');
+// Tabs on the same site share a renderer instead of each starting a fresh one.
+// Isolation between different sites is untouched — that is the boundary that
+// matters — but ten tabs of one site stop costing ten process baselines.
+app.commandLine.appendSwitch('process-per-site');
 app.commandLine.appendSwitch('disable-features', 'Translate,MediaRouter,OptimizationHints,DialMediaRouteProvider');
-app.commandLine.appendSwitch('disable-background-timer-throttling', 'false');
+// Background timer throttling stays ON — that is Chromium's default and it is
+// what keeps the foreground tab fast. This line used to disable it, passing
+// 'false' to a switch whose mere presence turns it on, so it read as the exact
+// opposite of what it did. Measured with four busy background tabs: throttled
+// off they burned ~291% of a core.
+// (deliberately not disabling background timer throttling)
 
 const UI_BASE = 80;                // 40 tabstrip + 40 omnibar
 const BM_BAR = 32;                 // bookmarks strip when shown
@@ -802,7 +817,7 @@ function startDebugServer() {
         return send(res, 200, {
           ok: true,
           features: app.getGPUFeatureStatus(),
-          info: await app.getGPUInfo('basic').catch(() => null),
+          info: await app.getGPUInfo('complete').catch(() => null),
         });
       }
       if (req.url === '/info') {
@@ -857,11 +872,12 @@ app.whenReady().then(async () => {
   // The first search of a session is the one most likely to feel slow.
   setTimeout(warmSearchEngine, 1200);
   Blocker.install(ses, () => prefs, DATA_DIR, pushNav)
-    .then(() => pushNav())
+    .then(() => { blog('blocker ready'); pushNav(); })
     .catch((e) => console.error('[blocker] install failed:', e && e.message));
   // Extensions have to be re-loaded on every boot; Electron does not persist
   // them across restarts the way Chrome does.
   Updater.install((ch, payload) => sendUI(ch, payload));
+  blog('window shown, async work starting');
   Extensions.install(ses, DATA_DIR)
     .then((r) => {
       if (r.items.length) console.log('[extensions] loaded', r.items.map((x) => x.name).join(', '));
