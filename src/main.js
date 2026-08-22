@@ -23,6 +23,7 @@ const GX = require('./gx');
 const History = require('./history');
 const Extensions = require('./extensions');
 const Updater = require('./updater');
+const Reader = require('./reader');
 const Menus = require('./menus');
 const Anon = require('./anon');
 const Userscripts = require('./userscripts');
@@ -136,7 +137,7 @@ const DEFAULT_PREFS = {
   netLimit: 0,                 // Mbps cap per tab (0 = unlimited)
   forceDark: false,            // dark-mode any site
   // Toolbar: nothing is pinned by default — a clean bar you opt into.
-  pinned: { favorites: false, downloads: true, gx: false, ai: false, pop: false, shield: true, suspend: false, media: true, aioverview: true },
+  pinned: { favorites: false, downloads: true, gx: false, ai: false, pop: false, shield: true, suspend: false, media: true, aioverview: true, reader: true },
   // Anonymity
   proxyEnabled: false,
   proxyMode: 'manual',        // manual | tor
@@ -165,8 +166,16 @@ const DEFAULT_PREFS = {
   uiSounds: false,             // browser sound effects
 };
 function loadPrefs() {
-  try { return { ...DEFAULT_PREFS, ...JSON.parse(fs.readFileSync(PREFS_FILE, 'utf8')) }; }
-  catch { return { ...DEFAULT_PREFS }; }
+  let saved = {};
+  try { saved = JSON.parse(fs.readFileSync(PREFS_FILE, 'utf8')); } catch (e) { return { ...DEFAULT_PREFS }; }
+  const out = { ...DEFAULT_PREFS, ...saved };
+  // A flat spread replaces these wholesale, so a tool added after someone's
+  // prefs were written would never appear for them. Merge the nested objects
+  // key by key, with anything they have chosen winning.
+  ['pinned', 'userscripts'].forEach((k) => {
+    out[k] = { ...(DEFAULT_PREFS[k] || {}), ...(saved[k] || {}) };
+  });
+  return out;
 }
 function savePrefs(p) {
   try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(PREFS_FILE, JSON.stringify(p, null, 2)); } catch (e) {}
@@ -863,6 +872,21 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => { saveSession(); if (process.platform !== 'darwin') app.quit(); });
 
 // ── IPC from the browser chrome UI ────────────────────────────────
+// ── reader mode ───────────────────────────────────────────────────
+ipcMain.handle('reader:toggle', async () => {
+  const t = tabs.get(activeId);
+  if (!t || !t.view) return { ok: false, error: 'no tab' };
+  const wc = t.view.webContents;
+  if (await Reader.isOn(wc)) return { ...Reader.clear(wc), on: false };
+  const r = await Reader.apply(wc);
+  return { ...r, on: !!r.ok };
+});
+ipcMain.handle('reader:state', async () => {
+  const t = tabs.get(activeId);
+  if (!t || !t.view) return false;
+  return Reader.isOn(t.view.webContents);
+});
+
 // ── updates ───────────────────────────────────────────────────────
 ipcMain.handle('update:status', () => Updater.status());
 ipcMain.handle('update:check', () => Updater.check());

@@ -408,6 +408,17 @@ async function refreshSettings() {
 }
 $('clearData').onclick = async () => { await api.clearBrowsingData(); toast('Cookies and cache cleared.'); };
 
+// ── reader mode ───────────────────────────────────────────────────
+async function toggleReader() {
+  const r = await api.readerToggle();
+  if (r && r.ok) {
+    $('btnReader').classList.toggle('off', !r.on);
+  } else {
+    toast((r && r.error) || 'Reader mode could not open this page.', 'err');
+  }
+}
+$('btnReader').onclick = toggleReader;
+
 // ── command palette ───────────────────────────────────────────────
 // Everything the toolbar can do, reachable without knowing where it lives or
 // whether it happens to be pinned. Ctrl+K works from the page too, because a
@@ -430,6 +441,7 @@ function commands() {
     { icon: '🎛', name: 'Control — CPU, RAM & network limits', run: () => openPanel('panelGX') },
     { icon: '🕵', name: 'Anonymity — proxy & encrypted DNS', run: () => openPanel('panelAnon') },
     { icon: '⧉', name: 'Pop out video (picture-in-picture)', run: () => api.popOut() },
+    { icon: '📖', name: 'Reader mode', run: () => toggleReader() },
     { icon: '✦', name: (prefs.hideAiOverview !== false ? 'Show' : 'Hide') + " Google's AI Overview",
       run: () => $('btnAio').click() },
     { icon: '↻', name: 'Refresh filter lists', run: () => $('refreshLists').click() },

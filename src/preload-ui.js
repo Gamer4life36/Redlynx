@@ -93,6 +93,10 @@ contextBridge.exposeInMainWorld('redlynx', {
   // extensions
   moveTab: (id, toIndex) => ipcRenderer.invoke('tab:move', { id, toIndex }),
 
+  // reader mode
+  readerToggle: () => ipcRenderer.invoke('reader:toggle'),
+  readerState: () => ipcRenderer.invoke('reader:state'),
+
   // site permissions
   permList: () => ipcRenderer.invoke('perm:list'),
   permForget: (host, permission) => ipcRenderer.invoke('perm:forget', { host, permission }),
