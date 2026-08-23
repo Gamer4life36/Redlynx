@@ -41,22 +41,27 @@ const { ipcRenderer } = require('electron');
     }
   } catch (e) {}
 
-  // Every scriptlet opens by declaring `scriptletGlobals`, and rules aimed at
-  // the same object coordinate through it — set-constant on
-  // ytInitialPlayerResponse.adPlacements, .playerAds and .adSlots all chain
-  // off one shared registry.
+  // Every scriptlet opens by declaring `scriptletGlobals`, which is how rules
+  // aimed at one object are meant to coordinate — set-constant on
+  // ytInitialPlayerResponse.adPlacements, .playerAds and .adSlots are three
+  // such rules. uBlock Origin emits that declaration once for a whole page;
+  // this library hands back each scriptlet with its own copy, and wrapping
+  // them in separate scopes made those copies private.
   //
-  // Wrapping each scriptlet in its own scope stopped them clobbering each
-  // other's helpers, but it also handed each one a private registry, so they
-  // stopped coordinating: two of the three chained rules took effect and the
-  // third silently did not. That is how YouTube pre-rolls came back.
+  // So one shared registry goes in first and the per-scriptlet declaration is
+  // stripped, which matches how uBO actually runs them. Helpers stay scoped
+  // per scriptlet, which is all the wrapping was ever for.
   //
-  // So: one shared registry on the page, and the per-scriptlet declaration
-  // stripped so the body resolves to that instead of a local copy. Helpers
-  // stay scoped per scriptlet, which is all the wrapping was ever for.
-  // Matched literally. A regex here is a trap: the declaration contains its
-  // own `{}`, so the obvious [^}]* stops early and leaves `; };` behind —
-  // a syntax error that kills the scriptlet silently.
+  // Honest caveat: this was written believing private registries were why
+  // YouTube pre-rolls came back. The regression suite disproves that — with
+  // the sharing removed, an ad is still offered and still neutralised. The
+  // ads returned because the filter lists had gone stale, which is what the
+  // 12-hourly refresh in blocker.js addresses. This is kept because it is
+  // closer to uBO's own model, not because it is load-bearing.
+  //
+  // The strip is a literal string match on purpose. A regex is a trap here:
+  // the declaration contains its own `{}`, so the obvious [^}]* stops early,
+  // leaves `; };` behind, and kills every scriptlet silently.
   const PRELUDE = "if (typeof scriptletGlobals === 'undefined') { var scriptletGlobals = {}; };";
   let sharedReady = false;
 
