@@ -17,15 +17,20 @@ function clearDropMarks() {
 
 function renderTabs() {
   const host = $('tabs');
-  host.innerHTML = '';
+  // (warning above is preserved; item rows are appended after it)
   state.tabs.forEach((t, index) => {
     const el = document.createElement('div');
     el.className = 'tab' + (t.id === state.activeId ? ' active' : '') + (t.suspended ? ' sus' : '') + (t.private ? ' priv' : '');
+    el.dataset.id = String(t.id);
     el.title = (t.suspended ? '[suspended] ' : '') + (t.title || '') + '\n' + (t.url || '');
     const dot = t.loading ? '<span class="dot"></span>' : (t.pinned ? '<span class="dot" style="background:var(--warn)"></span>' : '');
     el.innerHTML = dot + '<span class="t"></span><span class="cl" title="Close">✕</span>';
     el.querySelector('.t').textContent = t.title || 'New tab';
     el.onclick = (e) => { if (!e.target.classList.contains('cl')) api.activateTab(t.id); };
+    // Middle-click closes the tab, as everywhere else. auxclick rather than
+    // mousedown so a drag that starts on the wheel button does not close it.
+    el.onauxclick = (e) => { if (e.button === 1) { e.preventDefault(); api.closeTab(t.id); } };
+    el.onmousedown = (e) => { if (e.button === 1) e.preventDefault(); };
     el.querySelector('.cl').onclick = (e) => { e.stopPropagation(); api.closeTab(t.id); };
     el.oncontextmenu = (e) => {
       e.preventDefault();
@@ -252,35 +257,82 @@ $('btnSettings').onclick = () => togglePanel('panelSettings');
 $('shield').onclick = () => togglePanel('panelShield');
 $('grabBtn').onclick = () => togglePanel('panelMedia');
 function togglePanel(id) { const was = $(id).classList.contains('open'); closePanels(); if (!was) openPanel(id); }
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closePanels();
-  if (e.ctrlKey && e.key === 't') { e.preventDefault(); api.newTab(); }
-  if (e.ctrlKey && e.key === 'w') { e.preventDefault(); if (state.activeId) api.closeTab(state.activeId); }
-  if (e.ctrlKey && e.key === 'l') { e.preventDefault(); url.focus(); }
-  if (e.ctrlKey && e.key === 'j') { e.preventDefault(); togglePanel('panelDownloads'); }
-  if (e.key === 'F5') { e.preventDefault(); api.reload(); }
-  if (e.ctrlKey && e.key === 'f') { e.preventDefault(); openFind(); }
-  if (e.ctrlKey && e.key === 'h') { e.preventDefault(); togglePanel('panelHistory'); }
-  if (e.ctrlKey && e.shiftKey && (e.key === 'N' || e.key === 'n')) { e.preventDefault(); api.newPrivateTab(); }
-  if (e.ctrlKey && e.key === 'p') { e.preventDefault(); api.print(); }
-  if (e.ctrlKey && e.key === 'd') { e.preventDefault(); $('btnStar').click(); }
-  // Ctrl+Tab cycles, Ctrl+1..9 jumps straight to a tab
-  if (e.ctrlKey && e.key === 'Tab') {
-    e.preventDefault();
-    const ids = state.tabs.map((t) => t.id);
-    if (ids.length > 1) {
-      const i = ids.indexOf(state.activeId);
-      api.activateTab(ids[(i + (e.shiftKey ? -1 : 1) + ids.length) % ids.length]);
-    }
+// One shortcut table, two callers. The chrome sees keys only while it holds
+// focus, so main.js forwards the same descriptor whenever a page has focus —
+// otherwise Ctrl+W would work in the omnibar and nowhere else.
+function handleShortcut(e) {
+  const key = e.key;
+  const k = (key || '').toLowerCase();
+  const ctrl = !!(e.ctrlKey || e.metaKey);
+  const shift = !!e.shiftKey;
+  const alt = !!e.altKey;
+  const eat = () => { if (e.preventDefault) e.preventDefault(); };
+  const ids = () => state.tabs.map((t) => t.id);
+  const cycle = (step) => {
+    const list = ids();
+    if (list.length < 2) return;
+    const i = list.indexOf(state.activeId);
+    api.activateTab(list[(i + step + list.length) % list.length]);
+  };
+
+  // Escape closes whatever is open; with nothing open it stops the load.
+  if (key === 'Escape') {
+    if (document.querySelector('.panel.open')) closePanels(); else api.stop();
+    return;
   }
-  if (e.ctrlKey && /^[1-9]$/.test(e.key)) {
-    e.preventDefault();
-    const ids = state.tabs.map((t) => t.id);
-    const n = Number(e.key);
-    const target = n === 9 ? ids[ids.length - 1] : ids[n - 1];
+
+  // tabs
+  if (ctrl && shift && k === 't') { eat(); api.reopenTab(); return; }
+  if (ctrl && k === 't') { eat(); api.newTab(); return; }
+  if (ctrl && shift && k === 'n') { eat(); api.newPrivateTab(); return; }
+  if ((ctrl && k === 'w') || (ctrl && key === 'F4')) {
+    eat(); if (state.activeId) api.closeTab(state.activeId); return;
+  }
+  if (ctrl && k === 'tab') { eat(); cycle(shift ? -1 : 1); return; }
+  if (ctrl && key === 'PageDown') { eat(); cycle(1); return; }
+  if (ctrl && key === 'PageUp') { eat(); cycle(-1); return; }
+  if (ctrl && /^[1-9]$/.test(key)) {
+    eat();
+    const list = ids();
+    const n = Number(key);
+    // Ctrl+9 is "last tab", the same as every other browser.
+    const target = n === 9 ? list[list.length - 1] : list[n - 1];
     if (target) api.activateTab(target);
+    return;
   }
-});
+
+  // navigation
+  if (ctrl && k === 'l') { eat(); url.focus(); url.select(); return; }
+  if (key === 'F6') { eat(); url.focus(); url.select(); return; }
+  if (ctrl && shift && k === 'r') { eat(); api.reload(true); return; }
+  if ((ctrl && k === 'r') || key === 'F5') { eat(); api.reload(shift); return; }
+  if (alt && key === 'ArrowLeft') { eat(); api.back(); return; }
+  if (alt && key === 'ArrowRight') { eat(); api.forward(); return; }
+  if (alt && k === 'home') { eat(); api.home(); return; }
+
+  // find
+  if ((ctrl && k === 'f') || (ctrl && k === 'g') || key === 'F3') {
+    eat();
+    if (ctrl && k === 'f') openFind();
+    else doFind(!shift, true);
+    return;
+  }
+
+  // panels
+  if (ctrl && k === 'j') { eat(); togglePanel('panelDownloads'); return; }
+  if (ctrl && k === 'h') { eat(); togglePanel('panelHistory'); return; }
+  if (ctrl && shift && k === 'o') { eat(); togglePanel('panelFavs'); return; }
+  if (ctrl && k === 'd') { eat(); $('btnStar').click(); return; }
+  if (ctrl && k === 'p') { eat(); api.print(); return; }
+  if (ctrl && k === 'k') {
+    eat();
+    if ($('paletteWrap').classList.contains('open')) paletteClose(); else paletteOpen();
+    return;
+  }
+}
+document.addEventListener('keydown', handleShortcut);
+// Keys that arrived while a page held focus.
+api.onShortcut((d) => handleShortcut(Object.assign({ preventDefault() {} }, d)));
 
 // ── media panel ───────────────────────────────────────────────────
 async function refreshMedia() {
@@ -289,15 +341,38 @@ async function refreshMedia() {
   const items = (res && res.items) || [];
   if (!res || !res.enginesReady) {
     $('grabPage').disabled = true;
-    host.innerHTML = '<div class="mut pad">Download engines not found.<br>Put <code>yt-dlp.exe</code>, <code>gallery-dl.exe</code> and <code>ffmpeg.exe</code> in an <code>engines</code> folder next to the app.</div>';
+    host.innerHTML = '<div class="mut pad">Download engines not found.<br>Put <code>yt-dlp.exe</code>, '
+      + '<code>gallery-dl.exe</code> and <code>ffmpeg.exe</code> in an <code>engines</code> folder next '
+      + 'to the app, or point <code>REDLYNX_ENGINES</code> at a folder that has them.</div>';
     return;
   }
   $('grabPage').disabled = false;
+  host.innerHTML = '';
+
+  // ffmpeg is optional but its absence is not cosmetic: without it yt-dlp
+  // cannot join the separate video and audio streams sites now serve, so
+  // downloads quietly come out at a lower quality than the page was playing.
+  // Said here rather than discovered later in a file that looks wrong.
+  const eng = (res && res.engines) || {};
+  const warn = [];
+  if (eng.ffmpeg === false) warn.push('ffmpeg is missing — downloads cannot merge separate video and audio, so quality will be capped.');
+  if (eng.gallerydl === false) warn.push('gallery-dl is missing — image galleries cannot be fetched.');
+  if (warn.length) {
+    const note = document.createElement('div');
+    note.className = 'hint';
+    note.style.color = 'var(--warn)';
+    note.textContent = warn.join(' ');
+    host.appendChild(note);
+  }
+
   if (!items.length) {
-    host.innerHTML = '<div class="mut pad">No media spotted yet. Try playing the video first — the stream is picked up as it loads.<br><br>You can still use “Grab this page’s video” below; the engine understands 1,700+ sites.</div>';
+    const empty = document.createElement('div');
+    empty.className = 'mut pad';
+    empty.innerHTML = 'No media spotted yet. Try playing the video first — the stream is picked up as it loads.'
+      + '<br><br>You can still use “Grab this page’s video” below; the engine understands 1,700+ sites.';
+    host.appendChild(empty);
     return;
   }
-  host.innerHTML = '';
   items.forEach((it) => {
     const row = document.createElement('div');
     row.className = 'item';
@@ -531,12 +606,6 @@ $('paletteWrap').addEventListener('mousedown', (e) => {
 });
 
 api.onPalette(() => paletteOpen());
-document.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-    e.preventDefault();
-    if ($('paletteWrap').classList.contains('open')) paletteClose(); else paletteOpen();
-  }
-});
 
 // ── site permissions ──────────────────────────────────────────────
 const PERM_NAMES = {

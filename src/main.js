@@ -460,6 +460,36 @@ function navState() {
 function pushNav() { sendUI('nav', navState()); }
 
 // ── tabs ──────────────────────────────────────────────────────────
+// Keys the chrome owns. Anything here is swallowed before the page sees it,
+// so keep it to combinations sites do not legitimately use.
+const CHROME_KEYS = new Set(['t', 'w', 'l', 'j', 'h', 'd', 'p', 'k', 'r', 'f', 'g', 'n', 'o', 'tab']);
+function isChromeShortcut(input) {
+  const key = input.key || '';
+  const k = key.toLowerCase();
+  const ctrl = input.control || input.meta;
+  if (key === 'F3' || key === 'F5' || key === 'F6') return true;
+  if (input.alt && (key === 'ArrowLeft' || key === 'ArrowRight' || k === 'home')) return true;
+  if (!ctrl) return false;
+  if (/^[1-9]$/.test(key)) return true;
+  if (key === 'PageUp' || key === 'PageDown' || key === 'F4') return true;
+  return CHROME_KEYS.has(k);
+}
+
+// Ctrl+Shift+T walks back through tabs closed this session, newest first.
+const closedTabs = [];
+function rememberClosed(t) {
+  const url = t.suspendedUrl || t.url;
+  if (!url || url === 'about:blank' || t.private) return;
+  closedTabs.push({ url, title: t.title || '', pinned: !!t.pinned });
+  if (closedTabs.length > 25) closedTabs.shift();
+}
+function reopenTab() {
+  const last = closedTabs.pop();
+  if (!last) return null;
+  const id = createTab(last.url, { pinned: last.pinned });
+  return id;
+}
+
 function createTab(url, opts) {
   url = url || newTabUrl();
   const background = !!(opts && opts.background);
@@ -488,7 +518,12 @@ function createTab(url, opts) {
   tabs.set(id, t);
 
   const wc = view.webContents;
-  wc.setWindowOpenHandler(({ url: u }) => { createTab(u, {}); return { action: 'deny' }; });
+  wc.setWindowOpenHandler(({ url: u, disposition }) => {
+    // Middle-click and Ctrl+click give 'background-tab' — respect that instead
+    // of yanking focus away. A link opened from a private tab stays private.
+    createTab(u, { background: disposition === 'background-tab', private: t.private });
+    return { action: 'deny' };
+  });
   wc.on('page-title-updated', (_e, title) => { t.title = title; if (!t.private) History.setTitle(wc.getURL(), title); pushTabs(); });
   wc.on('did-start-loading', () => { t.loading = true; pushTabs(); if (t.id === activeId) pushNav(); });
   wc.on('did-stop-loading', () => { t.loading = false; t.url = wc.getURL(); pushTabs(); if (t.id === activeId) pushNav(); });
@@ -546,31 +581,38 @@ function createTab(url, opts) {
     if (input.type !== 'keyDown') return;
     const k = (input.key || '').toLowerCase();
     const ctrl = input.control || input.meta;
-    if (k === 'f12' || (ctrl && input.shift && k === 'i')) { wc.toggleDevTools(); e.preventDefault(); }
-    else if (ctrl && (k === '=' || k === '+')) { wc.setZoomLevel(wc.getZoomLevel() + 0.5); e.preventDefault(); }
-    else if (ctrl && k === '-') { wc.setZoomLevel(wc.getZoomLevel() - 0.5); e.preventDefault(); }
-    else if (ctrl && k === '0') { wc.setZoomLevel(0); e.preventDefault(); }
-    else if (ctrl && k === 'r') { wc.reload(); e.preventDefault(); }
-    else if (ctrl && k === 't') { createTab(newTabUrl(), {}); e.preventDefault(); }
-    else if (ctrl && k === 'w') { closeTab(id); e.preventDefault(); }
-    else if (ctrl && k === 'l') { sendUI('focus-url', {}); e.preventDefault(); }
-    // Ctrl+K reaches the chrome even while the page holds focus, which is the
-    // whole point of a palette: it has to work from wherever you are.
-    else if (ctrl && k === 'k') { sendUI('palette', {}); e.preventDefault(); }
-    else if (k === 'f5') { wc.reload(); e.preventDefault(); }
-    else if (k === 'f11') {
+
+    // Keys that act on THIS view stay here — they need its webContents.
+    if (k === 'f12' || (ctrl && input.shift && k === 'i')) { wc.toggleDevTools(); e.preventDefault(); return; }
+    if (ctrl && (k === '=' || k === '+')) { wc.setZoomLevel(wc.getZoomLevel() + 0.5); e.preventDefault(); return; }
+    if (ctrl && k === '-') { wc.setZoomLevel(wc.getZoomLevel() - 0.5); e.preventDefault(); return; }
+    if (ctrl && k === '0') { wc.setZoomLevel(0); e.preventDefault(); return; }
+    if (k === 'f11') {
       if (fullscreenTabId === id) leaveFullscreen(id); else enterFullscreen(id);
       e.preventDefault();
+      return;
     }
-    else if (k === 'escape' && fullscreenTabId === id) {
+    if (k === 'escape' && fullscreenTabId === id) {
       // Only ours to handle if the page is not itself in fullscreen — when it
       // is, the page gets Escape and its own leave event brings us back.
       wc.executeJavaScript('!!document.fullscreenElement', true)
         .then((pageOwns) => { if (!pageOwns) leaveFullscreen(id); })
         .catch(() => leaveFullscreen(id));
+      return;
     }
-    else if (input.alt && k === 'arrowleft') { const nh = wc.navigationHistory; if (nh && nh.canGoBack()) nh.goBack(); e.preventDefault(); }
-    else if (input.alt && k === 'arrowright') { const nh = wc.navigationHistory; if (nh && nh.canGoForward()) nh.goForward(); e.preventDefault(); }
+
+    // Everything else browser-level goes to the chrome's shortcut table, so
+    // there is exactly one definition of what each key does.
+    if (isChromeShortcut(input)) {
+      e.preventDefault();
+      sendUI('shortcut', {
+        key: input.key,
+        ctrlKey: !!input.control,
+        metaKey: !!input.meta,
+        shiftKey: !!input.shift,
+        altKey: !!input.alt,
+      });
+    }
   });
   // Inserted CSS belongs to the document that was showing when it went in, so
   // it is gone the moment a new one commits. The keys have to be dropped with
@@ -647,6 +689,7 @@ function setActive(id) {
 function closeTab(id) {
   const t = tabs.get(id);
   if (!t) return;
+  rememberClosed(t);
   try { win.contentView.removeChildView(t.view); } catch (e) {}
   try { GX.unbind(id); } catch (e) {}
   try { t.view.webContents.close(); } catch (e) {}
@@ -849,6 +892,22 @@ function startDebugServer() {
         sendUI(String(b.channel || ''), b.payload || {});
         return send(res, 200, { ok: true, sent: b.channel });
       }
+      // Real OS-level key delivery to the focused page, so the
+      // before-input-event path can be exercised the way a user hits it.
+      if (req.url === '/key') {
+        const b = await body(req);
+        const t = tabs.get(activeId);
+        if (!t) return send(res, 400, { error: 'no active tab' });
+        const ev = {
+          type: 'keyDown',
+          keyCode: String(b.key || ''),
+          modifiers: Array.isArray(b.modifiers) ? b.modifiers : [],
+        };
+        t.view.webContents.focus();
+        t.view.webContents.sendInputEvent(ev);
+        t.view.webContents.sendInputEvent(Object.assign({}, ev, { type: 'keyUp' }));
+        return send(res, 200, { ok: true, sent: ev });
+      }
       if (req.url === '/gpu') {
         return send(res, 200, {
           ok: true,
@@ -1017,7 +1076,12 @@ ipcMain.handle('nav:go', (_e, input) => {
 });
 ipcMain.handle('nav:back', () => { const t = tabs.get(activeId); if (t && t.view.webContents.navigationHistory) t.view.webContents.navigationHistory.goBack(); });
 ipcMain.handle('nav:forward', () => { const t = tabs.get(activeId); if (t && t.view.webContents.navigationHistory) t.view.webContents.navigationHistory.goForward(); });
-ipcMain.handle('nav:reload', () => { const t = tabs.get(activeId); if (t) t.view.webContents.reload(); });
+ipcMain.handle('nav:reload', (_e, hard) => {
+  const t = tabs.get(activeId);
+  if (!t) return;
+  if (hard) t.view.webContents.reloadIgnoringCache(); else t.view.webContents.reload();
+});
+ipcMain.handle('tab:reopen', () => reopenTab());
 ipcMain.handle('nav:stop', () => { const t = tabs.get(activeId); if (t) t.view.webContents.stop(); });
 ipcMain.handle('nav:home', () => { const t = tabs.get(activeId); if (t) navigateTo(t.view.webContents, homeUrl()); });
 

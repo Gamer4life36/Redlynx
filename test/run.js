@@ -148,7 +148,9 @@ async function main() {
     for (let attempt = 0; attempt < 4 && !offered; attempt++) {
       await nav('about:blank');
       await nav('https://www.youtube.com/watch?v=cWppAbqm9I8');
-      const state = await until(async () => page(`(function(){
+      let state;
+      try {
+        state = await until(async () => page(`(function(){
         var p=document.getElementById('movie_player');
         if(!p) return null;
         var v=document.querySelector('video');
@@ -163,6 +165,11 @@ async function main() {
           sponsored: /Sponsored/i.test(document.body.innerText)
         };
       })()`), { timeout: 30000, what: 'the player to load (page may not have loaded)' });
+      } catch (e) {
+        // A slow load is not a blocking failure — that is what the retries
+        // are for. Aborting here failed the check for a network hiccup.
+        continue;
+      }
 
       if (!state.offered) continue;             // nothing served this time; try again
       offered = true;
@@ -344,8 +351,57 @@ async function main() {
     return rows.length + ' rows';
   });
 
+  await check('keyboard shortcuts work from the page and the chrome', async () => {
+    // The chrome only sees keys while it has focus, so the interesting half is
+    // the forwarded one: keys pressed with a page focused.
+    const tabs = () => chrome('window.redlynx.tabState().then(function(s){return s.tabs.length;})');
+    await post('/nav', { url: 'https://example.com' });
+    await new Promise((r) => setTimeout(r, 2500));
+
+    const start = await tabs();
+    await post('/key', { key: 't', modifiers: ['control'] });
+    await new Promise((r) => setTimeout(r, 1200));
+    const opened = await tabs();
+    expect(opened === start + 1, 'Ctrl+T from a focused page did not open a tab (' + start + ' -> ' + opened + ')');
+
+    await post('/key', { key: 'w', modifiers: ['control'] });
+    await new Promise((r) => setTimeout(r, 1200));
+    const closed = await tabs();
+    expect(closed === opened - 1, 'Ctrl+W from a focused page did not close a tab (' + opened + ' -> ' + closed + ')');
+
+    await post('/key', { key: 'T', modifiers: ['control', 'shift'] });
+    await new Promise((r) => setTimeout(r, 1500));
+    const back = await tabs();
+    expect(back === closed + 1, 'Ctrl+Shift+T did not reopen the closed tab (' + closed + ' -> ' + back + ')');
+
+    // Middle-click closes a tab from the strip.
+    const mid = await chrome(`(async function(){
+      var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms);});};
+      var id=await window.redlynx.newTab('https://example.org/');
+      await sleep(1500);
+      var before=(await window.redlynx.tabState()).tabs.length;
+      var el=document.querySelector('.tab[data-id="'+id+'"]');
+      if(!el) return 'no tab element';
+      el.dispatchEvent(new MouseEvent('auxclick',{button:1,bubbles:true,cancelable:true}));
+      await sleep(900);
+      return before-(await window.redlynx.tabState()).tabs.length;
+    })()`);
+    expect(mid === 1, 'middle-click did not close the tab (' + mid + ')');
+
+    // Put the strip back the way we found it — later checks assume one page.
+    await chrome(`(async function(){
+      var s = await window.redlynx.tabState();
+      for (var i = s.tabs.length - 1; i > 0; i--) await window.redlynx.closeTab(s.tabs[i].id);
+    })()`);
+    await new Promise((r) => setTimeout(r, 800));
+
+    return 'Ctrl+T/W/Shift+T forwarded, middle-click closes';
+  });
+
   await check('command palette opens', async () => {
     const n = await chrome(`new Promise(function(res){
+      // Ctrl+K toggles, so start from a known-closed state.
+      paletteClose();
       document.dispatchEvent(new KeyboardEvent('keydown',{key:'k',ctrlKey:true,bubbles:true}));
       setTimeout(function(){
         var open=document.getElementById('paletteWrap').classList.contains('open');

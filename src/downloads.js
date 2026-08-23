@@ -11,6 +11,7 @@
  */
 const { ipcMain, app } = require('electron');
 const path = require('path');
+const EXE = process.platform === 'win32' ? '.exe' : '';
 const fs = require('fs');
 const { spawn } = require('child_process');
 
@@ -24,22 +25,44 @@ let running = 0;
 const MAX_PARALLEL = 2;
 
 // ── engine discovery ──────────────────────────────────────────────
-// Prefer engines shipped next to the app; fall back to the GrabQueue install
-// on this machine so nothing has to be downloaded twice.
+// In a packaged build the engines sit in resources/engines; running from
+// source they sit beside the app. REDLYNX_ENGINES points at any folder, which
+// is how a machine that already has them avoids keeping a second copy.
+//
+// This list used to end with an absolute path to one particular machine's
+// GrabQueue install. It worked there and nowhere else: an installed copy
+// found no engines at all, and the downloader then did nothing without ever
+// saying why.
 function engineDir() {
   const candidates = [
+    process.env.REDLYNX_ENGINES,
+    process.resourcesPath ? path.join(process.resourcesPath, 'engines') : null,
     path.join(app.getAppPath(), 'engines'),
     path.join(path.dirname(process.execPath), 'engines'),
-    'D:\\SAVE THESE\\GrabQueue\\engines',
-  ];
+  ].filter(Boolean);
   for (const c of candidates) {
-    try { if (fs.existsSync(path.join(c, 'yt-dlp.exe'))) return c; } catch (e) {}
+    try { if (fs.existsSync(path.join(c, 'yt-dlp' + EXE))) return c; } catch (e) {}
   }
   return null;
 }
+
+// Which engines are actually present, so the UI can name what is missing
+// instead of failing silently when a download is started.
+function engineStatus() {
+  const d = engineDir();
+  const has = (n) => {
+    try { return !!d && fs.existsSync(path.join(d, n + EXE)); } catch (e) { return false; }
+  };
+  return {
+    dir: d,
+    ytdlp: has('yt-dlp'),
+    gallerydl: has('gallery-dl'),
+    ffmpeg: has('ffmpeg'),          // only needed to merge separate streams
+  };
+}
 function enginePath(name) {
   const d = engineDir();
-  return d ? path.join(d, name + (process.platform === 'win32' ? '.exe' : '')) : null;
+  return d ? path.join(d, name + EXE) : null;
 }
 function enginesReady() { return !!engineDir(); }
 
@@ -301,6 +324,7 @@ function install(options) {
 
   ipcMain.handle('media:list', (_e, tabId) => ({
     enginesReady: enginesReady(),
+    engines: engineStatus(),
     items: foundList(tabId),
   }));
   ipcMain.handle('media:grabPage', (_e, payload) => pushItem({ url: payload.url, kind: 'video', title: payload.title, engine: 'video' }));
@@ -313,6 +337,7 @@ function install(options) {
   ipcMain.handle('dl:retry', (_e, id) => retry(id));
   ipcMain.handle('dl:dir', () => outDir());
   ipcMain.handle('dl:enginesReady', () => enginesReady());
+  ipcMain.handle('dl:engines', () => engineStatus());
 }
 
-module.exports = { install, watchTab, clearFound, foundCount, foundList, addFound, enginesReady, enqueue, trackNative };
+module.exports = { install, watchTab, clearFound, foundCount, foundList, addFound, enginesReady, engineStatus, enqueue, trackNative };

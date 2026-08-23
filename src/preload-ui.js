@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('redlynx', {
   newTab: (url) => ipcRenderer.invoke('tab:new', url),
   closeTab: (id) => ipcRenderer.invoke('tab:close', id),
   activateTab: (id) => ipcRenderer.invoke('tab:activate', id),
+  reopenTab: () => ipcRenderer.invoke('tab:reopen'),
   suspendTab: (id) => ipcRenderer.invoke('tab:suspend', id),
   pinTab: (id) => ipcRenderer.invoke('tab:pin', id),
   suspendOthers: () => ipcRenderer.invoke('tab:suspendOthers'),
@@ -24,7 +25,7 @@ contextBridge.exposeInMainWorld('redlynx', {
   go: (input) => ipcRenderer.invoke('nav:go', input),
   back: () => ipcRenderer.invoke('nav:back'),
   forward: () => ipcRenderer.invoke('nav:forward'),
-  reload: () => ipcRenderer.invoke('nav:reload'),
+  reload: (hard) => ipcRenderer.invoke('nav:reload', !!hard),
   stop: () => ipcRenderer.invoke('nav:stop'),
   home: () => ipcRenderer.invoke('nav:home'),
   navState: () => ipcRenderer.invoke('nav:state'),
@@ -142,6 +143,7 @@ contextBridge.exposeInMainWorld('redlynx', {
   onDoBookmark: on('do-bookmark'),
   onOpenPanel: on('open-panel'),
   onPalette: on('palette'),
+  onShortcut: on('shortcut'),
   // Tell the browser the chrome is drawing over the page, so its view can be
   // grown to full size and raised above it.
   setOverlay: (on) => ipcRenderer.send('ui:overlay', !!on),
