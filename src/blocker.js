@@ -197,9 +197,18 @@ function shimPreloadApi(ses) {
 // The preload injects the same scriptlets at document start instead, each in
 // its own function scope, which both avoids the collision and lands early
 // enough to prune the ad payload before the page's inline scripts read it.
+// The stylesheet for a host does not change between frames, but this used to
+// be recomputed for every one of them — and a page like YouTube has a lot of
+// frames. Measured on a session restored to a heavy page, that cost about 5
+// seconds of time-to-first-byte on the next navigation, because the main
+// process was busy matching rules while requests waited on it.
+const styleCache = new Map();
+
 function takeOverCosmetics() {
   const { ipcMain } = require('electron');
   const CHANNEL = '@ghostery/adblocker/inject-cosmetic-filters';
+  const MO_CHANNEL = '@ghostery/adblocker/is-mutation-observer-enabled';
+
   try { ipcMain.removeHandler(CHANNEL); } catch (e) {}
   ipcMain.handle(CHANNEL, (event, url, msg) => {
     if (!blocker || !enabled) return;
@@ -208,25 +217,39 @@ function takeOverCosmetics() {
       hostname = new URL(url).hostname;
       domain = require('tldts-experimental').parse(url).domain || '';
     } catch (e) { return; }
-    const isFirstRun = msg === undefined;
-    try {
-      const { active, styles } = blocker.getCosmeticsFilters({
-        domain, hostname, url,
-        classes: msg && msg.classes,
-        hrefs: msg && msg.hrefs,
-        ids: msg && msg.ids,
-        getBaseRules: isFirstRun,
-        getInjectionRules: false,        // the preload owns these
-        getExtendedRules: false,
-        getRulesFromHostname: isFirstRun,
-        getRulesFromDOM: !isFirstRun,
-      });
-      if (active === false) return;
-      if (styles && styles.length) {
-        event.sender.insertCSS(styles, { cssOrigin: 'user' });
-      }
-    } catch (e) {}
+
+    // Only the first call per frame matters now — see the mutation observer
+    // note below — and its answer depends solely on the host.
+    if (msg !== undefined) return;
+
+    let styles = styleCache.get(hostname);
+    if (styles === undefined) {
+      try {
+        const r = blocker.getCosmeticsFilters({
+          domain, hostname, url,
+          getBaseRules: true,
+          getInjectionRules: false,        // the preload owns these
+          getExtendedRules: false,
+          getRulesFromHostname: true,
+          getRulesFromDOM: false,
+        });
+        styles = r.active === false ? '' : (r.styles || '');
+      } catch (e) { styles = ''; }
+      if (styleCache.size > 400) styleCache.clear();
+      styleCache.set(hostname, styles);
+    }
+    if (styles) {
+      try { event.sender.insertCSS(styles, { cssOrigin: 'user' }); } catch (e) {}
+    }
   });
+
+  // Turn off the DOM-mutation stream. It exists to match generic cosmetic
+  // rules against classes and ids as they appear, which means a round trip to
+  // the main process and a fresh rule match every time a busy page changes —
+  // on YouTube, continuously. The host-specific rules are what actually
+  // remove YouTube's and Google's ads, and those all arrive in the first call.
+  try { ipcMain.removeHandler(MO_CHANNEL); } catch (e) {}
+  ipcMain.handle(MO_CHANNEL, () => false);
 }
 
 function enable() {
@@ -294,6 +317,7 @@ async function refreshLists() {
   blocker = fresh;
   await loadResources(blocker);
   scriptletCache.clear();          // built from the old engine
+  styleCache.clear();
   wireCounter();
   if (enabled) enable();
   return { ok: true, ...status() };

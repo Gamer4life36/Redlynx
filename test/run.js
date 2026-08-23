@@ -234,20 +234,46 @@ async function main() {
     return v.w + 'px wide, original ' + v.nat;
   });
 
-  await check('video plays at full quality', async () => {
+  // Two things matter and they pull against each other: the video should
+  // start quickly, and it should end up at the best quality the video has.
+  // Locking quality to the maximum satisfied the second by sacrificing the
+  // first — a weak moment meant buffering at 4K instead of playing at 1080p.
+  // So this asserts a fast start AND that it climbs, rather than either alone.
+  await check('video starts fast and reaches full quality', async () => {
     await nav('about:blank');
     await nav('https://www.youtube.com/watch?v=LXb3EKWsInQ');
-    const r = await until(async () => page(`(function(){
+    // Timed from here, not from performance.now() inside the page. That clock
+    // starts at the document's own navigation, and a poll can land on the
+    // previous document — one left playing by an earlier check, open for
+    // twenty seconds — which reported a twenty second start for a video that
+    // actually began in two.
+    const started = Date.now();
+    await until(async () => page(`(function(){
       var v=document.querySelector('video');
       if(!v || v.paused || v.currentTime < 0.4) return null;
-      var q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():{};
-      return { res: v.videoWidth+'x'+v.videoHeight, w: v.videoWidth,
-               dropped: q.droppedVideoFrames||0, total: q.totalVideoFrames||0 };
+      if(location.pathname.indexOf('/watch') !== 0) return null;   // must be the new page
+      return true;
     })()`), { timeout: 30000, what: 'playback to start' });
-    expect(r.w >= 1920, 'playing at only ' + r.res + ' (network may be limiting this)');
-    expect(r.total === 0 || r.dropped / Math.max(r.total, 1) < 0.05,
-      'dropped ' + r.dropped + ' of ' + r.total + ' frames');
-    return r.res + ', ' + r.dropped + ' dropped';
+    const first = { at: Date.now() - started };
+    expect(first.at < 12000, 'took ' + first.at + 'ms to play (network may be limiting this)');
+
+    const best = await until(async () => page(`(function(){
+      var p=document.getElementById('movie_player');
+      var v=document.querySelector('video');
+      if(!p||!v) return null;
+      var levels=p.getAvailableQualityLevels?p.getAvailableQualityLevels():[];
+      var top=levels.filter(function(l){return l!=='auto';})[0];
+      if(p.getPlaybackQuality()!==top) return null;
+      var q=v.getVideoPlaybackQuality?v.getVideoPlaybackQuality():{};
+      return { top: top, res: v.videoWidth+'x'+v.videoHeight,
+               dropped: q.droppedVideoFrames||0, total: q.totalVideoFrames||0 };
+    })()`), { timeout: 30000, every: 1000, what: 'quality to climb to the best available' });
+    // Only judge the drop rate once there are enough frames to mean anything.
+    // Right after a quality switch the counter can read 2 of 19, which is
+    // 10% and tells you nothing.
+    expect(best.total < 300 || best.dropped / best.total < 0.05,
+      'dropped ' + best.dropped + ' of ' + best.total + ' frames');
+    return 'played at ' + first.at + 'ms, reached ' + best.top + ' (' + best.res + ')';
   });
 
   // The chrome is a separate view above the page; sized wrong, a fullscreen
