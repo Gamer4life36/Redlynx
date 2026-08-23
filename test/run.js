@@ -430,6 +430,34 @@ async function main() {
     return 'Ctrl+T/W/Shift+T forwarded, middle-click closes';
   });
 
+  // Every other check reads main-process state. This one reads the screen,
+  // because a redraw bug once duplicated tab elements while the tab list
+  // itself stayed perfectly correct — invisible to a state-only assertion.
+  await check('the tab strip matches the open tabs', async () => {
+    const r = await chrome(`(async function(){
+      var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms);});};
+      var R=window.redlynx;
+      var made=[];
+      for(var i=0;i<3;i++) made.push(await R.newTab('https://example.com/'));
+      await sleep(2000);
+
+      // Close them one at a time, checking the strip after every redraw.
+      var worst='';
+      for(var j=0;j<made.length;j++){
+        await R.closeTab(made[j]);
+        await sleep(600);
+        var n=(await R.tabState()).tabs.length;
+        var els=document.querySelectorAll('#tabs .tab').length;
+        if(n!==els) worst = worst || ('after close '+(j+1)+': '+n+' tabs but '+els+' elements');
+      }
+      var ids=[].map.call(document.querySelectorAll('#tabs .tab'),function(e){return e.dataset.id;});
+      var dupes=ids.length!==new Set(ids).size;
+      return worst || (dupes ? 'duplicate tab elements in the strip: '+ids.join(',') : 'ok');
+    })()`);
+    expect(r === 'ok', r);
+    return 'strip stays in step with the tab list';
+  });
+
   await check('command palette opens', async () => {
     const n = await until(async () => {
       const v = await chrome(`new Promise(function(res){

@@ -17,7 +17,9 @@ function clearDropMarks() {
 
 function renderTabs() {
   const host = $('tabs');
-  // (warning above is preserved; item rows are appended after it)
+  // Every redraw rebuilds the strip. Without this the tabs are appended
+  // again each time, so closing one appears to multiply them.
+  host.replaceChildren();
   state.tabs.forEach((t, index) => {
     const el = document.createElement('div');
     el.className = 'tab' + (t.id === state.activeId ? ' active' : '') + (t.suspended ? ' sus' : '') + (t.private ? ' priv' : '');
