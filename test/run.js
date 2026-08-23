@@ -254,14 +254,28 @@ async function main() {
   // video keeps the toolbar on screen and is not fullscreen at all.
   await check('fullscreen is really fullscreen', async () => {
     await nav('https://www.youtube.com/watch?v=LXb3EKWsInQ');
-    await until(async () => page(`!!document.querySelector('.html5-video-player')`), { what: 'the player' });
-    await page(`(function(){var p=document.querySelector('.html5-video-player'); if(p) p.requestFullscreen(); return 'x';})()`);
-    const r = await until(async () => page(`(function(){
-      if(!document.fullscreenElement) return null;
+    // Waiting for the element is not enough — the player refuses the request
+    // until it is actually running, which made this check fail intermittently
+    // while fullscreen itself was fine. Wait for playback, then keep asking.
+    await until(async () => page(`(function(){
       var v=document.querySelector('video');
-      return { w: window.innerWidth, h: window.innerHeight,
-               videoY: Math.round(v.getBoundingClientRect().top) };
-    })()`), { what: 'fullscreen' });
+      return !!(v && !v.paused && v.currentTime > 0.3);
+    })()`), { timeout: 30000, what: 'playback before requesting fullscreen' });
+
+    const r = await until(async () => {
+      await page(`(function(){
+        if (document.fullscreenElement) return 'already';
+        var p=document.querySelector('.html5-video-player');
+        if (p) p.requestFullscreen().catch(function(){});
+        return 'asked';
+      })()`);
+      return page(`(function(){
+        if(!document.fullscreenElement) return null;
+        var v=document.querySelector('video');
+        return { w: window.innerWidth, h: window.innerHeight,
+                 videoY: Math.round(v.getBoundingClientRect().top) };
+      })()`);
+    }, { timeout: 15000, every: 1000, what: 'fullscreen' });
     expect(r.videoY === 0, 'video sits at y=' + r.videoY + ' — chrome still on screen');
     await page('document.exitFullscreen()');
     const back = await until(async () => chrome('window.innerHeight < 400 ? window.innerHeight : null'),
