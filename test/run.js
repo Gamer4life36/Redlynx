@@ -127,6 +127,11 @@ async function main() {
   // The blocker once installed into a void: enableBlockingInSession threw on
   // an Electron version mismatch, the throw was swallowed, and every page was
   // unprotected while the shield read zero.
+  // The suite ends by enabling quit-on-last-tab, and the profile persists.
+  // Clear it before anything runs, or the next run quits the moment some
+  // other check happens to empty the tab list.
+  await chrome('window.redlynx.setPrefs({ closeWindowWithLastTab: false })').catch(() => {});
+
   await check('blocker installs cleanly', async () => {
     // On a first run there is no cached list, so the browser answers /info
     // before the blocker has finished installing. Real users hit that window
