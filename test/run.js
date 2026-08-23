@@ -18,6 +18,7 @@
  */
 const { spawn } = require('child_process');
 const http = require('http');
+const os = require('os');
 const path = require('path');
 const fs = require('fs');
 
@@ -84,7 +85,10 @@ async function startBrowser() {
   const electron = require(path.join(ROOT, 'node_modules', 'electron'));
   const logFile = path.join(__dirname, 'last-run.log');
   const log = fs.createWriteStream(logFile);
-  child = spawn(electron, ['.'], {
+  // Its own profile, so a run never fights a Redlynx the user has open —
+  // sharing one means the second process cannot create its cache and dies.
+  const profile = path.join(os.tmpdir(), 'redlynx-test-profile');
+  child = spawn(electron, ['.', '--user-data-dir=' + profile], {
     cwd: ROOT,
     env: { ...process.env, REDLYNX_DEBUG: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -114,7 +118,13 @@ async function main() {
   // an Electron version mismatch, the throw was swallowed, and every page was
   // unprotected while the shield read zero.
   await check('blocker installs cleanly', async () => {
-    const { status } = await blocker();
+    // On a first run there is no cached list, so the browser answers /info
+    // before the blocker has finished installing. Real users hit that window
+    // too — the point of the check is that it closes, not that it never opens.
+    const status = await until(async () => {
+      const r = await blocker();
+      return r.status && r.status.active ? r.status : null;
+    }, { timeout: 60000, what: 'the blocker to install' });
     expect(status.active, 'blocker is not active: ' + (status.error || 'unknown'));
     expect(!status.error, 'blocker reported: ' + status.error);
     expect(status.scriptlets > 100, 'only ' + status.scriptlets + ' scriptlets loaded (uBO resources missing?)');
@@ -412,6 +422,30 @@ async function main() {
     })`);
     expect(n > 5, 'palette did not open, or had ' + n + ' commands');
     return n + ' commands';
+  });
+
+  // Deliberately last: it ends with no tabs, which shuts the browser down.
+  // Closing the final tab used to spawn a replacement, so Ctrl+W looked like
+  // it opened tabs rather than closing them.
+  await check('closing the last tab closes the window', async () => {
+    // Get down to a single tab without going through zero.
+    await chrome(`(async function(){
+      var s = await window.redlynx.tabState();
+      for (var i = s.tabs.length - 1; i > 0; i--) await window.redlynx.closeTab(s.tabs[i].id);
+    })()`);
+    await new Promise((r) => setTimeout(r, 900));
+
+    const one = await chrome('window.redlynx.tabState().then(function(s){return s.tabs.length;})');
+    expect(one === 1, 'expected 1 tab before the last close, got ' + one);
+
+    await post('/key', { key: 'w', modifiers: ['control'], target: 'chrome' });
+    await new Promise((r) => setTimeout(r, 2500));
+
+    // The debug endpoint dies with the app, so an unreachable one is the pass.
+    let alive = true;
+    try { await post('/info', {}); } catch (e) { alive = false; }
+    expect(!alive, 'the window stayed open after closing its last tab');
+    return 'window closed instead of spawning a replacement tab';
   });
 
   // Anything that killed a renderer during the run would have been reported

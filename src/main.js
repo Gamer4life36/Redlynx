@@ -695,11 +695,20 @@ function closeTab(id) {
   try { t.view.webContents.close(); } catch (e) {}
   tabs.delete(id);
   Downloads.clearFound(id);
+
+  // Closing the last tab closes the window, as every other browser does.
+  // Opening a replacement instead made Ctrl+W look like it *created* tabs:
+  // the tab really did close, and a fresh one appeared in the same breath.
+  if (!tabs.size) {
+    activeId = null;
+    try { win.close(); } catch (e) {}
+    return;
+  }
+
   if (activeId === id) {
     const keys = [...tabs.keys()];
-    const next = keys.length ? keys[keys.length - 1] : null;
     activeId = null;
-    if (next) setActive(next); else createTab(newTabUrl(), {});
+    setActive(keys[keys.length - 1]);
   }
   pushTabs();
   saveSession();
@@ -896,16 +905,20 @@ function startDebugServer() {
       // before-input-event path can be exercised the way a user hits it.
       if (req.url === '/key') {
         const b = await body(req);
-        const t = tabs.get(activeId);
-        if (!t) return send(res, 400, { error: 'no active tab' });
         const ev = {
           type: 'keyDown',
           keyCode: String(b.key || ''),
           modifiers: Array.isArray(b.modifiers) ? b.modifiers : [],
         };
-        t.view.webContents.focus();
-        t.view.webContents.sendInputEvent(ev);
-        t.view.webContents.sendInputEvent(Object.assign({}, ev, { type: 'keyUp' }));
+        // target 'chrome' presses the key with the toolbar focused, which is
+        // what a person does after clicking anywhere in the browser UI.
+        let target;
+        if (b.target === 'chrome') target = chrome.webContents;
+        else { const t = tabs.get(activeId); target = t && t.view.webContents; }
+        if (!target) return send(res, 400, { error: 'no target' });
+        target.focus();
+        target.sendInputEvent(ev);
+        target.sendInputEvent(Object.assign({}, ev, { type: 'keyUp' }));
         return send(res, 200, { ok: true, sent: ev });
       }
       if (req.url === '/gpu') {
