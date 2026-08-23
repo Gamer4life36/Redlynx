@@ -81,6 +81,16 @@ async function check(name, fn) {
 
 function expect(cond, msg) { if (!cond) throw new Error(msg); }
 
+// Google answers heavy automated traffic with a CAPTCHA interstitial. That
+// says nothing about the browser, so report it as inconclusive rather than
+// letting it masquerade as a regression. Solving it is not on the table.
+async function googleBlocked() {
+  const u = await page('location.href');
+  if (typeof u === 'string' && u.indexOf('/sorry/') !== -1) return true;
+  const t = await page('document.body.innerText.slice(0,200)');
+  return typeof t === 'string' && /unusual traffic/i.test(t);
+}
+
 async function startBrowser() {
   const electron = require(path.join(ROOT, 'node_modules', 'electron'));
   const logFile = path.join(__dirname, 'last-run.log');
@@ -210,6 +220,8 @@ async function main() {
 
   await check('google search skips the AI overview', async () => {
     await chrome('window.redlynx.go("what is a black hole")');
+    await new Promise((r) => setTimeout(r, 2500));
+    if (await googleBlocked()) return 'INCONCLUSIVE — Google is rate-limiting this IP';
     const r = await until(async () => {
       const v = await page(`(function(){
         var f=document.querySelector('#search a h3, #rso a h3');
@@ -228,6 +240,8 @@ async function main() {
 
   await check('google images expands inline', async () => {
     await nav('https://www.google.com/search?q=mountain+landscape&udm=2');
+    await new Promise((r) => setTimeout(r, 2000));
+    if (await googleBlocked()) return 'INCONCLUSIVE — Google is rate-limiting this IP';
     await until(async () => page('document.querySelectorAll("img").length > 20'), { what: 'thumbnails' });
     await page(`(function(){
       var imgs=[].slice.call(document.querySelectorAll('img')).filter(function(i){
