@@ -409,14 +409,16 @@ async function main() {
       var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms);});};
       var id=await window.redlynx.newTab('https://example.org/');
       await sleep(1500);
-      var before=(await window.redlynx.tabState()).tabs.length;
       var el=document.querySelector('.tab[data-id="'+id+'"]');
       if(!el) return 'no tab element';
       el.dispatchEvent(new MouseEvent('auxclick',{button:1,bubbles:true,cancelable:true}));
       await sleep(900);
-      return before-(await window.redlynx.tabState()).tabs.length;
+      // Identity, not count: a tab loading in the background can change the
+      // total without saying anything about the one we clicked.
+      var ids=(await window.redlynx.tabState()).tabs.map(function(t){return t.id;});
+      return ids.indexOf(id) === -1 ? 'gone' : 'still there';
     })()`);
-    expect(mid === 1, 'middle-click did not close the tab (' + mid + ')');
+    expect(mid === 'gone', 'middle-click did not close the tab (' + mid + ')');
 
     // Put the strip back the way we found it — later checks assume one page.
     await chrome(`(async function(){
@@ -429,7 +431,8 @@ async function main() {
   });
 
   await check('command palette opens', async () => {
-    const n = await chrome(`new Promise(function(res){
+    const n = await until(async () => {
+      const v = await chrome(`new Promise(function(res){
       // Ctrl+K toggles, so start from a known-closed state.
       paletteClose();
       document.dispatchEvent(new KeyboardEvent('keydown',{key:'k',ctrlKey:true,bubbles:true}));
@@ -440,6 +443,8 @@ async function main() {
         res(open ? count : 0);
       }, 400);
     })`);
+      return v > 5 ? v : null;
+    }, { timeout: 15000, what: 'the palette to open' });
     expect(n > 5, 'palette did not open, or had ' + n + ' commands');
     return n + ' commands';
   });
@@ -448,6 +453,12 @@ async function main() {
   // Closing the final tab used to spawn a replacement, so Ctrl+W looked like
   // it opened tabs rather than closing them.
   await check('closing the last tab closes the window', async () => {
+    // This check writes a pref, and the test profile persists between runs —
+    // without resetting it, the next run starts with the quit behaviour on and
+    // kills the browser here instead of in the phase that expects it.
+    await chrome('window.redlynx.setPrefs({ closeWindowWithLastTab: false })');
+    await new Promise((r) => setTimeout(r, 400));
+
     // Get down to a single tab without going through zero.
     await chrome(`(async function(){
       var s = await window.redlynx.tabState();
@@ -473,7 +484,9 @@ async function main() {
     // With the pref on, it quits instead.
     await chrome('window.redlynx.setPrefs({ closeWindowWithLastTab: true })');
     await new Promise((r) => setTimeout(r, 500));
-    await post('/key', { key: 'w', modifiers: ['control'], target: 'chrome' });
+    // The app quits while serving this request, so the request itself failing
+    // is the expected outcome, not an error.
+    try { await post('/key', { key: 'w', modifiers: ['control'], target: 'chrome' }); } catch (e) {}
     await new Promise((r) => setTimeout(r, 2500));
 
     // The debug endpoint dies with the app, so an unreachable one is the pass.
