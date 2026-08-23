@@ -242,7 +242,13 @@ async function main() {
     await nav('https://www.google.com/search?q=mountain+landscape&udm=2');
     await new Promise((r) => setTimeout(r, 2000));
     if (await googleBlocked()) return 'INCONCLUSIVE — Google is rate-limiting this IP';
-    await until(async () => page('document.querySelectorAll("img").length > 20'), { what: 'thumbnails' });
+    try {
+      await until(async () => page('document.querySelectorAll("img").length > 20'), { what: 'thumbnails' });
+    } catch (e) {
+      // The interstitial can also arrive after the first paint.
+      if (await googleBlocked()) return 'INCONCLUSIVE — Google is rate-limiting this IP';
+      throw e;
+    }
     await page(`(function(){
       var imgs=[].slice.call(document.querySelectorAll('img')).filter(function(i){
         var r=i.getBoundingClientRect(); return r.width>120 && r.height>90; });
@@ -452,6 +458,21 @@ async function main() {
     const one = await chrome('window.redlynx.tabState().then(function(s){return s.tabs.length;})');
     expect(one === 1, 'expected 1 tab before the last close, got ' + one);
 
+    // Default: the window stays and the tab really is replaced, not left open.
+    const idBefore = await chrome('window.redlynx.tabState().then(function(s){return s.tabs[0].id;})');
+    await post('/key', { key: 'w', modifiers: ['control'], target: 'chrome' });
+    await new Promise((r) => setTimeout(r, 1800));
+    const after = await chrome(`window.redlynx.tabState().then(function(s){
+      return s.tabs.length + ':' + s.tabs[0].id; })`);
+    const [n2, id2] = after.split(':');
+    // Ids are not necessarily consecutive, so identity is the thing to check:
+    // one tab, and not the one that was just closed.
+    expect(n2 === '1', 'expected 1 tab after closing the last one, got ' + n2);
+    expect(Number(id2) !== idBefore, 'the last tab was not actually closed (same id ' + id2 + ')');
+
+    // With the pref on, it quits instead.
+    await chrome('window.redlynx.setPrefs({ closeWindowWithLastTab: true })');
+    await new Promise((r) => setTimeout(r, 500));
     await post('/key', { key: 'w', modifiers: ['control'], target: 'chrome' });
     await new Promise((r) => setTimeout(r, 2500));
 
@@ -459,7 +480,7 @@ async function main() {
     let alive = true;
     try { await post('/info', {}); } catch (e) { alive = false; }
     expect(!alive, 'the window stayed open after closing its last tab');
-    return 'window closed instead of spawning a replacement tab';
+    return 'keeps the window by default, quits when the pref is on';
   });
 
   // Anything that killed a renderer during the run would have been reported

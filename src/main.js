@@ -144,6 +144,9 @@ const DEFAULT_PREFS = {
   blockThirdPartyCookies: true,
   askBeforeSaving: true,       // never store sensitive data silently
   suspendIdleTabs: true,
+  // Closing the last tab: quit like Chrome, or keep the window on a new tab
+  // like Firefox with browser.tabs.closeWindowWithLastTab off.
+  closeWindowWithLastTab: false,
   suspendAfterMin: 30,
   downloadDir: '',
   aiEnabled: false,            // AI is OFF until the user turns it on
@@ -701,7 +704,16 @@ function closeTab(id) {
   // the tab really did close, and a fresh one appeared in the same breath.
   if (!tabs.size) {
     activeId = null;
-    try { win.close(); } catch (e) {}
+    if (prefs.closeWindowWithLastTab) {
+      try { win.close(); } catch (e) {}
+      return;
+    }
+    // Keep the window, on a fresh tab. This is what made Ctrl+W look broken
+    // before, so say plainly that the tab did close.
+    createTab(newTabUrl(), {});
+    sendUI('toast', { text: 'Closed the last tab' });
+    pushTabs();
+    saveSession();
     return;
   }
 
