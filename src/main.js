@@ -508,6 +508,9 @@ function createTab(url, opts) {
       // dies with the tab — no cookies, cache or storage left behind.
       partition: priv ? ('private-' + id + '-' + Date.now()) : 'persist:main',
       spellcheck: false,
+      // Chromium's built-in PDF viewer rides on the plugin path. Without this
+      // a PDF navigates, reports its type, and paints an empty page.
+      plugins: true,
     },
   });
   const lazy = !!(opts && opts.suspended);
@@ -948,6 +951,17 @@ function startDebugServer() {
         target.sendInputEvent(ev);
         target.sendInputEvent(Object.assign({}, ev, { type: 'keyUp' }));
         return send(res, 200, { ok: true, sent: ev });
+      }
+      // Frame tree of the active tab. The PDF viewer renders in a child
+      // frame, so a top-frame DOM probe reports an empty page for a PDF that
+      // is displaying perfectly.
+      if (req.url === '/frames') {
+        const t = tabs.get(activeId);
+        if (!t) return send(res, 400, { error: 'no active tab' });
+        const urls = [];
+        const walk = (f) => { if (!f) return; urls.push(f.url); (f.frames || []).forEach(walk); };
+        try { walk(t.view.webContents.mainFrame); } catch (e) {}
+        return send(res, 200, { ok: true, frames: urls });
       }
       if (req.url === '/gpu') {
         return send(res, 200, {

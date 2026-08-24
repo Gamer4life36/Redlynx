@@ -368,6 +368,20 @@ async function main() {
 
   // Reader used innerHTML and a bare DOMParser, which sites enforcing Trusted
   // Types refuse — it worked on Wikipedia and failed on YouTube.
+  // A top-frame DOM probe says a PDF page is empty even when the viewer is
+  // displaying it fine — the viewer is a child frame. Check the frame tree.
+  await check('PDFs open in the viewer instead of a blank page', async () => {
+    await nav('https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf');
+    const frames = await until(async () => {
+      const r = await post('/frames', {});
+      const hit = (r.frames || []).some((u) => u.startsWith('chrome-extension://') && u.endsWith('index.html'));
+      return hit ? r.frames : null;
+    }, { timeout: 20000, what: 'the PDF viewer frame' });
+    const type = await page('document.contentType');
+    expect(type === 'application/pdf', 'served as ' + type);
+    return 'viewer mounted (' + frames.length + ' frames)';
+  });
+
   await check('reader mode works under Trusted Types', async () => {
     await nav('https://en.wikipedia.org/wiki/Photosynthesis');
     await until(async () => page('document.body && document.body.innerText.length > 2000'), { what: 'the article' });
