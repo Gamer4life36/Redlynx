@@ -330,20 +330,46 @@ async function main() {
       return !!(v && !v.paused && v.currentTime > 0.3);
     })()`), { timeout: 30000, what: 'playback before requesting fullscreen' });
 
-    const r = await until(async () => {
+    let r = null;
+    try {
+      r = await until(async () => {
+        await page(`(function(){
+          if (document.fullscreenElement) return 'already';
+          var p=document.querySelector('.html5-video-player');
+          if (p) p.requestFullscreen().catch(function(){});
+          return 'asked';
+        })()`);
+        return page(`(function(){
+          if(!document.fullscreenElement) return null;
+          var v=document.querySelector('video');
+          return { w: window.innerWidth, h: window.innerHeight,
+                   videoY: Math.round(v.getBoundingClientRect().top) };
+        })()`);
+      }, { timeout: 20000, every: 1000, what: 'fullscreen' });
+    } catch (e) {
+      // The player can simply refuse — it does that when YouTube is throttling
+      // the session. That says nothing about our fullscreen handling, so prove
+      // it against a page we control rather than reporting a false failure.
+      // A data: URL cannot be navigated to at the top level in Chromium, so
+      // build the element on a real page instead.
+      await nav('https://example.com');
       await page(`(function(){
-        if (document.fullscreenElement) return 'already';
-        var p=document.querySelector('.html5-video-player');
-        if (p) p.requestFullscreen().catch(function(){});
-        return 'asked';
+        var d=document.createElement('div');
+        d.id='b'; d.style.cssText='width:100vw;height:100vh;background:#222';
+        document.body.appendChild(d); return 'made';
       })()`);
-      return page(`(function(){
-        if(!document.fullscreenElement) return null;
-        var v=document.querySelector('video');
-        return { w: window.innerWidth, h: window.innerHeight,
-                 videoY: Math.round(v.getBoundingClientRect().top) };
-      })()`);
-    }, { timeout: 15000, every: 1000, what: 'fullscreen' });
+      const own = await until(async () => {
+        await page(`document.getElementById('b').requestFullscreen().catch(function(){})`);
+        return page(`document.fullscreenElement ? { w: window.innerWidth, h: window.innerHeight,
+          videoY: Math.round(document.getElementById('b').getBoundingClientRect().top) } : null`);
+      }, { timeout: 10000, every: 500, what: 'fullscreen on our own page' });
+      expect(own.videoY === 0, 'element sits at y=' + own.videoY + ' — chrome still on screen');
+      await page('document.exitFullscreen()');
+      await until(async () => chrome('window.innerHeight < 400 ? window.innerHeight : null'),
+        { timeout: 8000, what: 'the toolbar to come back' });
+      return 'INCONCLUSIVE on YouTube (player refused); our fullscreen verified at '
+        + own.w + 'x' + own.h;
+    }
     expect(r.videoY === 0, 'video sits at y=' + r.videoY + ' — chrome still on screen');
     await page('document.exitFullscreen()');
     const back = await until(async () => chrome('window.innerHeight < 400 ? window.innerHeight : null'),
@@ -548,8 +574,12 @@ async function main() {
       }).on('error', () => resolve(''));
     });
 
-    await chrome(`window.redlynx.setPrefs({proxyEnabled:true,proxyMode:'tor'})
-      .then(function(){ return window.redlynx.anonApply(); })`);
+    // Deliberately do NOT configure the proxy by hand. Doing that hid a real
+    // bug: the circuit came up, the button said connected, and traffic still
+    // went out in the clear because routing was never switched on.
+    const p = await chrome('window.redlynx.getPrefs()');
+    expect(p.proxyEnabled && p.proxyMode === 'tor',
+      'starting Tor did not switch routing on (proxyEnabled=' + p.proxyEnabled + ', mode=' + p.proxyMode + ')');
     await nav('https://api.ipify.org');
     const seen = await until(async () => {
       const t = await page('document.body && document.body.innerText.trim()');
@@ -564,9 +594,9 @@ async function main() {
       return t && t.length > 3 ? t : null;
     }, { timeout: 45000, what: 'the onion service to load' });
 
-    await chrome(`window.redlynx.setPrefs({proxyEnabled:false})
-      .then(function(){ return window.redlynx.anonApply(); })`);
     await chrome('window.redlynx.torStop()');
+    const after = await chrome('window.redlynx.getPrefs()');
+    expect(!after.proxyEnabled, 'stopping Tor left the browser pointed at a dead SOCKS port');
     return 'exit ' + seen + ' (ours ' + (mine || '?') + '), onion loaded: "' + title.slice(0, 40) + '"';
   });
 

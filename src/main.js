@@ -365,6 +365,7 @@ let overlayOpen = false;
 // without this, a fullscreen video fills only the area under the toolbar and
 // the strip stays on screen, which is not fullscreen at all.
 let fullscreenTabId = null;
+const htmlFullscreenEvents = [];
 
 function layout() {
   if (!win) return;
@@ -656,8 +657,8 @@ function createTab(url, opts) {
 
   // A video going fullscreen: take the window fullscreen too and let the page
   // have the whole of it.
-  wc.on('enter-html-full-screen', () => enterFullscreen(id));
-  wc.on('leave-html-full-screen', () => leaveFullscreen(id));
+  wc.on('enter-html-full-screen', () => { htmlFullscreenEvents.push('enter:' + id); enterFullscreen(id); });
+  wc.on('leave-html-full-screen', () => { htmlFullscreenEvents.push('leave:' + id); leaveFullscreen(id); });
 
   wc.on('did-start-navigation', (_e, _u, isInPage, isMainFrame) => {
     if (isInPage || !isMainFrame) return;
@@ -968,6 +969,20 @@ function startDebugServer() {
         const walk = (f) => { if (!f) return; urls.push(f.url); (f.frames || []).forEach(walk); };
         try { walk(t.view.webContents.mainFrame); } catch (e) {}
         return send(res, 200, { ok: true, frames: urls });
+      }
+      if (req.url === '/winstate') {
+        const t = tabs.get(activeId);
+        return send(res, 200, {
+          ok: true,
+          isFullScreen: win.isFullScreen(),
+          isMaximized: win.isMaximized(),
+          bounds: win.getBounds(),
+          contentBounds: win.getContentBounds(),
+          fullscreenTabId,
+          chromeBounds: chrome.getBounds(),
+          tabBounds: t && t.view ? t.view.getBounds() : null,
+          htmlFullscreenEvents,
+        });
       }
       if (req.url === '/gpu') {
         return send(res, 200, {
@@ -1394,14 +1409,30 @@ ipcMain.handle('anon:doh', () => Anon.dohList());
 ipcMain.handle('anon:tor', () => Anon.torStatus());
 // Bundled Tor: started on demand, never on launch.
 ipcMain.handle('tor:status', () => Tor.status());
+// What the user asked for is "browse over Tor", not "run a daemon". Starting
+// it therefore switches routing on too — otherwise the circuit comes up, the
+// button says connected, and every page still goes out in the clear.
+let proxyBeforeTor = null;
 ipcMain.handle('tor:start', async () => {
   const st = await Tor.start();
-  // Routing only changes once the circuit is actually up.
-  if (st.running) await Anon.applyProxy(session.fromPartition('persist:main'));
+  if (!st.running) return st;
+  proxyBeforeTor = { proxyEnabled: prefs.proxyEnabled, proxyMode: prefs.proxyMode };
+  prefs = { ...prefs, proxyEnabled: true, proxyMode: 'tor' };
+  savePrefs(prefs);
+  await Anon.applyProxy(session.fromPartition('persist:main'));
+  sendUI('prefs', prefs);
   return st;
 });
 ipcMain.handle('tor:stop', async () => {
   Tor.stop();
+  // Put back whatever proxy setting was in force before, rather than leaving
+  // the browser pointed at a SOCKS port that is no longer listening.
+  if (proxyBeforeTor) {
+    prefs = { ...prefs, ...proxyBeforeTor };
+    proxyBeforeTor = null;
+    savePrefs(prefs);
+    sendUI('prefs', prefs);
+  }
   await Anon.applyProxy(session.fromPartition('persist:main'));
   return Tor.status();
 });
