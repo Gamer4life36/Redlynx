@@ -293,3 +293,17 @@ body.hasbg::before{
   content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
   background:linear-gradient(180deg, rgba(12,14,19,.72), rgba(12,14,19,.86));
 }
+
+/* ── deep search ──────────────────────────────────────────────────
+   .row is a horizontal flex line, which laid the title, source and snippet
+   out side by side and forced the panel to scroll sideways. A result is a
+   block: title, then where it came from, then the snippet. */
+.row.deep{display:block;padding:9px 0;border-bottom:1px solid var(--bd);overflow-wrap:anywhere}
+.row.deep:last-child{border-bottom:0}
+.row.deep .deepTitle{color:var(--accent);text-decoration:none;font-weight:600;line-height:1.35;display:block}
+.row.deep .deepTitle:hover{text-decoration:underline}
+.row.deep .mut{margin-top:2px}
+#deepList{max-height:none}
+#deepSources{line-height:1.5}
+/* The source picker stacks a name over its explanation. */
+#deepList label.row{display:flex;align-items:flex-start;border-bottom:0}

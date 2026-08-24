@@ -40,6 +40,10 @@ contextBridge.exposeInMainWorld('redlynx', {
   downloadDir: () => ipcRenderer.invoke('dl:dir'),
   enginesReady: () => ipcRenderer.invoke('dl:enginesReady'),
 
+  // deep search
+  deepSearch: (query, sources) => ipcRenderer.invoke('deep:search', { query, sources }),
+  deepSources: () => ipcRenderer.invoke('deep:sources'),
+
   // prefs / privacy
   getPrefs: () => ipcRenderer.invoke('prefs:get'),
   setPrefs: (patch) => ipcRenderer.invoke('prefs:set', patch),

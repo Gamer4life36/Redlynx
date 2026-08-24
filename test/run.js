@@ -508,6 +508,33 @@ async function main() {
     return 'strip stays in step with the tab list';
   });
 
+  // Deep search leans on eleven third-party indexes, several of which will
+  // rate-limit a machine that queries them all day. The check asserts the
+  // aggregator works — most sources answering and results merging — not that
+  // any particular one is reachable right now.
+  await check('deep search reaches many indexes at once', async () => {
+    const r = await chrome(`window.redlynx.deepSearch('mycorrhizal networks forest')`);
+    const ok = r.sources.filter((s) => s.ok);
+    const blocked = r.sources.filter((s) => !s.ok);
+    expect(r.sources.length >= 10, 'only ' + r.sources.length + ' sources registered');
+    expect(ok.length >= Math.ceil(r.sources.length / 2),
+      'only ' + ok.length + '/' + r.sources.length + ' sources answered: '
+      + blocked.map((s) => s.name + ' (' + s.error + ')').join(', '));
+    expect(r.results.length > 20, 'only ' + r.results.length + ' merged results');
+
+    // Independent indexes reaching the same page must merge, not duplicate.
+    const urls = r.results.map((x) => x.url);
+    expect(urls.length === new Set(urls).size, 'duplicate urls survived the merge');
+    const corroborated = r.results.filter((x) => x.sources.length > 1).length;
+
+    // A source that is being rate-limited must say so rather than look empty.
+    for (const b of blocked) expect(b.error, b.name + ' failed without saying why');
+
+    return r.results.length + ' results, ' + ok.length + '/' + r.sources.length
+      + ' sources, ' + corroborated + ' corroborated'
+      + (blocked.length ? ' (' + blocked.map((s) => s.name).join(', ') + ' rate-limited)' : '');
+  });
+
   await check('command palette opens', async () => {
     const n = await until(async () => {
       const v = await chrome(`new Promise(function(res){

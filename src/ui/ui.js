@@ -205,7 +205,7 @@ url.addEventListener('keydown', (e) => {
 });
 
 // ── panels ────────────────────────────────────────────────────────
-const PANELS = ['panelDownloads', 'panelMedia', 'panelShield', 'panelSettings', 'panelAI', 'panelGX', 'panelFavs', 'panelHistory', 'panelAnon'];
+const PANELS = ['panelDownloads', 'panelMedia', 'panelShield', 'panelSettings', 'panelAI', 'panelGX', 'panelFavs', 'panelHistory', 'panelAnon', 'panelDeep'];
 // Anything drawn over the page needs the chrome view grown and raised first,
 // or it is clipped to the top strip and hidden behind the site.
 function syncOverlay() {
@@ -324,6 +324,7 @@ function handleShortcut(e) {
   if (ctrl && k === 'j') { eat(); togglePanel('panelDownloads'); return; }
   if (ctrl && k === 'h') { eat(); togglePanel('panelHistory'); return; }
   if (ctrl && shift && k === 'o') { eat(); togglePanel('panelFavs'); return; }
+  if (ctrl && shift && k === 'f') { eat(); openDeep(); return; }
   if (ctrl && k === 'd') { eat(); $('btnStar').click(); return; }
   if (ctrl && k === 'p') { eat(); api.print(); return; }
   if (ctrl && k === 'k') {
@@ -508,6 +509,7 @@ function commands() {
     { icon: '⟳', name: 'Reload page', key: 'F5', run: () => api.reload() },
     { icon: '⌂', name: 'Home', run: () => api.home() },
     { icon: '🔎', name: 'Find on page', key: 'Ctrl+F', run: () => openFind() },
+    { icon: '🌐', name: 'Deep search (every index at once)', key: 'Ctrl+Shift+F', run: () => openDeep() },
     { icon: '💤', name: 'Suspend other tabs', run: async () => { await api.suspendOthers(); toast('Other tabs suspended.'); } },
     { icon: '⚙', name: 'Settings', run: () => openPanel('panelSettings') },
     { icon: '🛡', name: 'Protection', run: () => openPanel('panelShield') },
@@ -1274,3 +1276,123 @@ api.onFocusUrl(() => { url.focus(); url.select(); });
   // main pushes nav on every real change, so this is only a safety net
   setInterval(async () => { nav = await api.navState(); renderNav(); }, 5000);
 })();
+
+// ── deep search ───────────────────────────────────────────────────
+// One query against every index at once. Sources that refuse to answer say
+// so on the line — a rate-limited engine looks identical to an empty result
+// otherwise, and that is exactly the kind of silence worth naming.
+let deepPicked = null;   // null = every source
+
+function openDeep(prefill) {
+  closePanels();
+  openPanel('panelDeep');
+  const q = $('deepQ');
+  if (prefill) q.value = prefill;
+  q.focus();
+  q.select();
+}
+
+async function runDeep() {
+  const q = $('deepQ').value.trim();
+  if (!q) return;
+  const list = $('deepList');
+  const status = $('deepSources');
+  status.textContent = 'Searching every index…';
+  list.replaceChildren();
+
+  let res;
+  try {
+    res = await api.deepSearch(q, deepPicked);
+  } catch (e) {
+    status.textContent = 'Search failed: ' + (e && e.message ? e.message : e);
+    return;
+  }
+
+  const ok = res.sources.filter((s) => s.ok);
+  const bad = res.sources.filter((s) => !s.ok);
+  status.replaceChildren();
+  const line = document.createElement('div');
+  line.textContent = res.results.length + ' results from ' + ok.length + ' of '
+    + res.sources.length + ' sources'
+    + (ok.length ? ' — ' + ok.map((s) => s.name + ' ' + s.count).join(', ') : '');
+  status.appendChild(line);
+  if (bad.length) {
+    const warn = document.createElement('div');
+    warn.style.color = 'var(--warn)';
+    warn.textContent = 'no answer: ' + bad.map((s) => s.name + ' (' + (s.error || 'failed') + ')').join(', ');
+    status.appendChild(warn);
+  }
+
+  if (!res.results.length) {
+    const none = document.createElement('div');
+    none.className = 'mut pad';
+    none.textContent = 'Nothing came back. Try fewer words, or a bare domain for the archive sources.';
+    list.appendChild(none);
+    return;
+  }
+
+  for (const r of res.results) {
+    const row = document.createElement('div');
+    row.className = 'row deep';
+    const a = document.createElement('a');
+    a.href = '#';
+    a.className = 'deepTitle';
+    a.textContent = r.title;
+    a.title = r.url;
+    a.onclick = (e) => { e.preventDefault(); api.newTab(r.url); };
+    const meta = document.createElement('div');
+    meta.className = 'mut';
+    meta.style.fontSize = '11px';
+    // Two independent indexes agreeing is the strongest signal available.
+    meta.textContent = r.sources.join(' + ') + ' · ' + r.url.slice(0, 80);
+    row.appendChild(a);
+    row.appendChild(meta);
+    if (r.snippet) {
+      const sn = document.createElement('div');
+      sn.style.fontSize = '11px';
+      sn.style.opacity = '0.85';
+      sn.textContent = r.snippet.slice(0, 220);
+      row.appendChild(sn);
+    }
+    list.appendChild(row);
+  }
+}
+
+async function pickDeepSources() {
+  const all = await api.deepSources();
+  const list = $('deepList');
+  list.replaceChildren();
+  const head = document.createElement('div');
+  head.className = 'mut';
+  head.style.marginBottom = '6px';
+  head.textContent = 'Choose which indexes to search. Unticked sources are skipped.';
+  list.appendChild(head);
+  for (const s of all) {
+    const lab = document.createElement('label');
+    lab.className = 'row';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !deepPicked || deepPicked.includes(s.id);
+    cb.onchange = () => {
+      const ids = all.filter((x) => document.getElementById('deepsrc-' + x.id).checked).map((x) => x.id);
+      deepPicked = ids.length === all.length ? null : ids;
+    };
+    cb.id = 'deepsrc-' + s.id;
+    const txt = document.createElement('span');
+    const strong = document.createElement('b');
+    strong.textContent = s.name;
+    const why = document.createElement('div');
+    why.className = 'mut';
+    why.style.fontSize = '11px';
+    why.textContent = s.why;
+    txt.appendChild(strong);
+    txt.appendChild(why);
+    lab.appendChild(cb);
+    lab.appendChild(txt);
+    list.appendChild(lab);
+  }
+}
+
+$('deepGo').onclick = runDeep;
+$('deepPick').onclick = pickDeepSources;
+$('deepQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') runDeep(); });

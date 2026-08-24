@@ -189,6 +189,19 @@
     </div>
   </div>
 
+  <div class="panel" id="panelDeep">
+    <div class="phead"><b>🔎 Deep search</b><button class="x" data-close>✕</button></div>
+    <div class="pbody">
+      <input id="deepQ" class="num" style="width:100%;margin-bottom:6px" placeholder="Search every index at once…" spellcheck="false">
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <button class="btn" id="deepGo" style="flex:1">Search</button>
+        <button class="btn" id="deepPick">Sources</button>
+      </div>
+      <div id="deepSources" class="mut" style="font-size:11px;margin-bottom:8px"></div>
+      <div id="deepList"></div>
+    </div>
+  </div>
+
   <div class="panel" id="panelHistory">
     <div class="phead"><b>🕘 History</b><button class="x" data-close>✕</button></div>
     <div class="pbody">

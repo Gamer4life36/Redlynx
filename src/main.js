@@ -30,6 +30,7 @@ const History = require('./history');
 const Extensions = require('./extensions');
 const Updater = require('./updater');
 const Reader = require('./reader');
+const Deep = require('./deepsearch');
 const Menus = require('./menus');
 const Anon = require('./anon');
 const Userscripts = require('./userscripts');
@@ -875,8 +876,12 @@ function startDebugServer() {
         return send(res, 200, { ok: true, result: out });
       }
       if (req.url === '/shot') {
-        if (!wc) return send(res, 400, { error: 'no tab' });
-        const img = await wc.capturePage();
+        // ?chrome captures the browser UI rather than the page, which is the
+        // only way to actually look at a panel.
+        const b = await body(req);
+        const src = b && b.chrome ? chrome.webContents : wc;
+        if (!src) return send(res, 400, { error: 'no tab' });
+        const img = await src.capturePage();
         const file = path.join(DATA_DIR, 'shot.png');
         fs.writeFileSync(file, img.toPNG());
         return send(res, 200, { ok: true, file });
@@ -993,6 +998,7 @@ app.whenReady().then(async () => {
   fs.mkdirSync(BG_DIR, { recursive: true });
   serveInternal(ses);
   History.install(DATA_DIR);
+  Deep.install({ ipcMain });
   Anon.install(() => prefs);
   Anon.applyProxy(ses);
   Menus.install({
