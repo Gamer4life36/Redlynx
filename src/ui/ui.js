@@ -1396,3 +1396,49 @@ async function pickDeepSources() {
 $('deepGo').onclick = runDeep;
 $('deepPick').onclick = pickDeepSources;
 $('deepQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') runDeep(); });
+
+// ── bundled Tor ───────────────────────────────────────────────────
+// Bootstrapping takes ten seconds or so on a good connection, so the button
+// reports progress rather than looking hung.
+function renderTor(st) {
+  const btn = $('torToggle');
+  const label = $('torState');
+  if (!st.available) {
+    btn.disabled = true;
+    label.textContent = 'not bundled in this build';
+    return;
+  }
+  btn.disabled = false;
+  if (st.running) {
+    btn.textContent = 'Stop Tor';
+    label.textContent = 'connected · SOCKS ' + st.port;
+    label.style.color = 'var(--ok)';
+  } else if (st.bootstrapped > 0) {
+    btn.textContent = 'Starting…';
+    btn.disabled = true;
+    label.textContent = 'bootstrapping ' + st.bootstrapped + '%';
+    label.style.color = 'var(--mut)';
+  } else {
+    btn.textContent = 'Start Tor';
+    label.textContent = st.error || 'off';
+    label.style.color = st.error ? 'var(--warn)' : 'var(--mut)';
+  }
+}
+
+$('torToggle').onclick = async () => {
+  const now = await api.torState();
+  if (now.running) {
+    renderTor(await api.torStop());
+    toast('Tor stopped.');
+    return;
+  }
+  $('torToggle').disabled = true;
+  $('torState').textContent = 'starting…';
+  const st = await api.torStart();
+  renderTor(st);
+  toast(st.running ? 'Tor connected — .onion addresses will resolve.'
+                   : ('Tor did not start: ' + (st.error || 'unknown')));
+};
+
+api.onTor(renderTor);
+api.torState().then(renderTor).catch(() => {});

@@ -22,8 +22,47 @@ const DOH_SERVERS = {
   adguard:    { name: 'AdGuard (blocks ads)',   url: 'https://dns.adguard-dns.com/dns-query' },
 };
 
-// Tor's SOCKS port when the Tor Browser / daemon is running locally.
+// Tor's SOCKS port depends on how it was installed: the standalone daemon
+// listens on 9050, the Tor Browser bundle on 9150. Hardcoding one of them
+// means "Tor mode" silently routes nowhere for half of all setups.
+const TOR_PORTS = [9050, 9150];
 const TOR_PRESET = 'socks5://127.0.0.1:9050';
+let torPort = null;   // last port found listening
+
+// A SOCKS proxy that is not running fails as a connection error on every
+// page, which reads like a broken browser. Detect it and say so instead.
+function probePort(port, timeout) {
+  return new Promise((resolve) => {
+    const socket = new (require('net').Socket)();
+    let done = false;
+    const finish = (ok) => { if (!done) { done = true; try { socket.destroy(); } catch (e) {} resolve(ok); } };
+    socket.setTimeout(timeout || 400);
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(false));
+    socket.once('error', () => finish(false));
+    try { socket.connect(port, '127.0.0.1'); } catch (e) { finish(false); }
+  });
+}
+
+async function detectTor() {
+  for (const port of TOR_PORTS) {
+    if (await probePort(port)) { torPort = port; return port; }
+  }
+  torPort = null;
+  return null;
+}
+
+async function torStatus() {
+  const port = await detectTor();
+  return {
+    running: port !== null,
+    port,
+    proxy: port ? 'socks5://127.0.0.1:' + port : null,
+    hint: port
+      ? 'Tor is listening on ' + port + '. Turn on Tor mode in Anonymity to route through it.'
+      : 'No Tor found on 9050 or 9150. Install the Tor Expert Bundle or run the Tor Browser, then check again.',
+  };
+}
 
 let getPrefs = () => ({});
 
@@ -35,7 +74,15 @@ function install(prefsGetter) {
 // ── proxy ─────────────────────────────────────────────────────────
 function proxyRules(p) {
   if (!p.proxyEnabled) return null;
-  if (p.proxyMode === 'tor') return TOR_PRESET;
+  if (p.proxyMode === 'tor') {
+    // The bundled daemon wins: we know its port for certain. Fall back to a
+    // Tor the user installed themselves, on either of its usual ports.
+    try {
+      const bundled = require('./tor').proxyUrl();
+      if (bundled) return bundled;
+    } catch (e) {}
+    return 'socks5://127.0.0.1:' + (torPort || 9050);
+  }
   const host = (p.proxyHost || '').trim();
   if (!host) return null;
   const port = Number(p.proxyPort) || 0;
@@ -116,4 +163,4 @@ function dohList() {
   return Object.entries(DOH_SERVERS).map(([id, s]) => ({ id, name: s.name }));
 }
 
-module.exports = { install, applyProxy, applyDns, harden, checkIp, dohList, TOR_PRESET };
+module.exports = { install, applyProxy, applyDns, harden, checkIp, dohList, torStatus, detectTor, TOR_PRESET };

@@ -7,7 +7,7 @@
  *   • power tab management (suspend, session restore, search)
  *   • privacy hardening, and NOTHING sensitive saved without asking first
  */
-const { app, BaseWindow, WebContentsView, ipcMain, shell, session, Menu, protocol, net, dialog } = require('electron');
+const { app, BaseWindow, BrowserWindow, WebContentsView, ipcMain, shell, session, Menu, protocol, net, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -31,6 +31,7 @@ const Extensions = require('./extensions');
 const Updater = require('./updater');
 const Reader = require('./reader');
 const Deep = require('./deepsearch');
+const Tor = require('./tor');
 const Menus = require('./menus');
 const Anon = require('./anon');
 const Userscripts = require('./userscripts');
@@ -798,7 +799,7 @@ function restoreSession() {
   return false;
 }
 setInterval(saveSession, 30000);
-app.on('before-quit', saveSession);
+app.on('before-quit', () => { saveSession(); Tor.stop(); });
 
 // ── window ────────────────────────────────────────────────────────
 function createWindow() {
@@ -998,8 +999,37 @@ app.whenReady().then(async () => {
   fs.mkdirSync(BG_DIR, { recursive: true });
   serveInternal(ses);
   History.install(DATA_DIR);
-  Deep.install({ ipcMain });
+  Deep.install({
+    ipcMain,
+    // Some indexes stopped serving results to a plain HTTP fetch. We are a
+    // browser, so render the page offscreen and read the DOM instead. It runs
+    // in the normal session, which means it goes through Tor when Tor is on.
+    render: async (url, extractJs, opts) => {
+      const off = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          partition: 'persist:main',
+          sandbox: true,
+          contextIsolation: true,
+          nodeIntegration: false,
+          images: false,
+        },
+      });
+      try {
+        await off.loadURL(url);
+        await new Promise((r) => setTimeout(r, (opts && opts.settle) || 3000));
+        return await off.webContents.executeJavaScript(extractJs, true);
+      } finally {
+        try { off.destroy(); } catch (e) {}
+      }
+    },
+  });
   Anon.install(() => prefs);
+  Tor.install({
+    engineDir: () => { try { return Downloads.engineStatus().dir; } catch (e) { return null; } },
+    dataDir: DATA_DIR,
+    onStatus: (st) => sendUI('tor', st),
+  });
   Anon.applyProxy(ses);
   Menus.install({
     newTab: (u, o) => createTab(u, o || {}),
@@ -1361,6 +1391,20 @@ ipcMain.handle('anon:apply', async () => {
 });
 ipcMain.handle('anon:checkIp', () => Anon.checkIp(session.fromPartition('persist:main')));
 ipcMain.handle('anon:doh', () => Anon.dohList());
+ipcMain.handle('anon:tor', () => Anon.torStatus());
+// Bundled Tor: started on demand, never on launch.
+ipcMain.handle('tor:status', () => Tor.status());
+ipcMain.handle('tor:start', async () => {
+  const st = await Tor.start();
+  // Routing only changes once the circuit is actually up.
+  if (st.running) await Anon.applyProxy(session.fromPartition('persist:main'));
+  return st;
+});
+ipcMain.handle('tor:stop', async () => {
+  Tor.stop();
+  await Anon.applyProxy(session.fromPartition('persist:main'));
+  return Tor.status();
+});
 
 ipcMain.handle('hist:search', (_e, q) => History.search(q));
 ipcMain.handle('hist:suggest', (_e, q) => History.suggest(q));

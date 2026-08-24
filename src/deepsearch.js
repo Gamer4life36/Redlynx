@@ -17,6 +17,10 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
 
 const PER_SOURCE_TIMEOUT = 12000;
 
+// install() can hand us a way to render a page rather than merely fetch it.
+// Sources that need JavaScript stay switched off until it exists.
+let renderPage = null;
+
 function decode(s) {
   if (!s) return '';
   return String(s)
@@ -259,6 +263,48 @@ const SOURCES = [
     },
   },
   {
+    id: 'ahmia',
+    name: 'Ahmia (Tor)',
+    needsTor: true,
+    why: 'Indexes Tor hidden services, which no ordinary engine crawls. Results are .onion addresses and only open while Tor is on. Ahmia excludes abuse material by policy.',
+    async run(q) {
+      if (!renderPage) throw new Error('needs the offscreen renderer (run inside Redlynx)');
+      // Ahmia dropped its no-JavaScript version, so a plain fetch returns the
+      // landing page and nothing else. Render it and read the results out.
+      const rows = await renderPage('https://ahmia.fi/search/?q=' + form(q), `
+        (function () {
+          var out = [];
+          var seen = {};
+          var links = document.querySelectorAll('a[href]');
+          for (var i = 0; i < links.length && out.length < 20; i++) {
+            var href = links[i].getAttribute('href') || '';
+            var m = /([a-z2-7]{16,56}\.onion)/i.exec(href);
+            if (!m) continue;
+            var onion = m[1];
+            // Ahmia's own hidden service is on every page; it is chrome, not a result.
+            if (/ahmia\.fi/i.test(href) || /^juhanurmihxlp/i.test(onion)) continue;
+            if (seen[onion]) continue;
+            seen[onion] = 1;
+            var row = links[i].closest('li, .result, article, div') || links[i];
+            var title = (links[i].textContent || '').trim() || onion;
+            var text = (row.textContent || '').replace(/\s+/g, ' ').trim();
+            out.push({ onion: onion, href: href, title: title, text: text.slice(0, 240) });
+          }
+          return out;
+        })()
+      `, { settle: 4000 });
+      // Ahmia currently serves its page shell with no results block at all,
+      // for us and for a normal browser alike. That is a dead backend, not an
+      // empty search, and it should not read as "nothing matched".
+      if (!rows || !rows.length) throw new Error('Ahmia returned no results block (its search backend is not answering)');
+      return rows.map((r) => {
+        const url = /^https?:/i.test(r.href) && r.href.indexOf('ahmia.fi/search/redirect') === -1
+          ? r.href : ('http://' + r.onion);
+        return hit(url.indexOf('.onion') !== -1 ? url : 'http://' + r.onion, r.title, r.text, { onion: true });
+      });
+    },
+  },
+  {
     id: 'wikipedia',
     name: 'Wikipedia',
     why: 'Full-text search over article bodies, which finds articles that merely mention the term.',
@@ -301,7 +347,9 @@ async function search(query, opts) {
   const q = String(query || '').trim();
   if (!q) return { query: q, results: [], sources: [] };
   const only = (opts && Array.isArray(opts.sources) && opts.sources.length) ? new Set(opts.sources) : null;
-  const chosen = SOURCES.filter((s) => !only || only.has(s.id));
+  // Tor sources are opt-in: their results cannot open unless Tor is running,
+  // so they are never part of a default search.
+  const chosen = SOURCES.filter((s) => (only ? only.has(s.id) : !s.needsTor));
 
   const settled = await Promise.all(chosen.map(async (s) => {
     const started = Date.now();
@@ -325,10 +373,11 @@ async function search(query, opts) {
 }
 
 function catalogue() {
-  return SOURCES.map((s) => ({ id: s.id, name: s.name, why: s.why }));
+  return SOURCES.map((s) => ({ id: s.id, name: s.name, why: s.why, needsTor: !!s.needsTor }));
 }
 
-function install({ ipcMain }) {
+function install({ ipcMain, render }) {
+  renderPage = render || null;
   ipcMain.handle('deep:search', (_e, payload) => search(payload && payload.query, payload || {}));
   ipcMain.handle('deep:sources', () => catalogue());
 }

@@ -51,6 +51,10 @@
         "filter": [
           "*.exe"
         ]
+      },
+      {
+        "from": "engines/tor",
+        "to": "engines/tor"
       }
     ],
     "win": {

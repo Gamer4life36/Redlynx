@@ -535,6 +535,41 @@ async function main() {
       + (blocked.length ? ' (' + blocked.map((s) => s.name).join(', ') + ' rate-limited)' : '');
   });
 
+  // Tor is bundled, so this is testable rather than aspirational: start the
+  // daemon, route through it, and confirm the exit address is not ours.
+  await check('bundled Tor routes traffic and opens .onion', async () => {
+    const started = await chrome('window.redlynx.torStart()');
+    expect(started.available, 'Tor is not bundled in this build');
+    expect(started.running, 'Tor did not bootstrap: ' + (started.error || 'unknown'));
+
+    const mine = await new Promise((resolve) => {
+      require('https').get('https://api.ipify.org', (r) => {
+        let b = ''; r.on('data', (c) => { b += c; }); r.on('end', () => resolve(b.trim()));
+      }).on('error', () => resolve(''));
+    });
+
+    await chrome(`window.redlynx.setPrefs({proxyEnabled:true,proxyMode:'tor'})
+      .then(function(){ return window.redlynx.anonApply(); })`);
+    await nav('https://api.ipify.org');
+    const seen = await until(async () => {
+      const t = await page('document.body && document.body.innerText.trim()');
+      return (t && /^\d+\.\d+\.\d+\.\d+$/.test(t)) ? t : null;
+    }, { timeout: 30000, what: 'an exit address' });
+    expect(!mine || seen !== mine, 'traffic did not go through Tor (still ' + seen + ')');
+
+    // The point of Tor in a browser: an address no ordinary DNS can resolve.
+    await nav('http://2gzyxa5ihm7nsggfxnu52rck2vv4rvmdlkiu3zzui5du4xyclen53wid.onion/');
+    const title = await until(async () => {
+      const t = await page('document.title');
+      return t && t.length > 3 ? t : null;
+    }, { timeout: 45000, what: 'the onion service to load' });
+
+    await chrome(`window.redlynx.setPrefs({proxyEnabled:false})
+      .then(function(){ return window.redlynx.anonApply(); })`);
+    await chrome('window.redlynx.torStop()');
+    return 'exit ' + seen + ' (ours ' + (mine || '?') + '), onion loaded: "' + title.slice(0, 40) + '"';
+  });
+
   await check('command palette opens', async () => {
     const n = await until(async () => {
       const v = await chrome(`new Promise(function(res){

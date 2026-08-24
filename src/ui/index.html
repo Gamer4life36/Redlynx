@@ -145,6 +145,16 @@
         records no history, and is wiped the moment you close it.</div>
       <div class="sep"></div>
 
+      <div class="row"><b>Tor</b></div>
+      <div class="row" style="gap:6px">
+        <button class="btn" id="torToggle" style="flex:1">Start Tor</button>
+        <span class="mut" id="torState">checking…</span>
+      </div>
+      <div class="hint">Tor is bundled — nothing to install. Traffic goes through it only while
+        it is on, and <code>.onion</code> addresses resolve once a circuit is up. It protects
+        what this browser sends, not the rest of your machine.</div>
+      <div class="sep"></div>
+
       <div class="row"><b>Proxy routing</b></div>
       <label class="row"><input type="checkbox" data-pref="proxyEnabled"> <span>Route traffic through a proxy</span></label>
       <div class="row">
