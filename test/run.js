@@ -394,7 +394,7 @@ async function main() {
     await new Promise((r) => setTimeout(r, 2500));
 
     const start = await tabs();
-    await post('/key', { key: 't', modifiers: ['control'] });
+    await post('/key', { key: 't', modifiers: ['control'], focus: true });
     await new Promise((r) => setTimeout(r, 1200));
     const opened = await tabs();
     expect(opened === start + 1, 'Ctrl+T from a focused page did not open a tab (' + start + ' -> ' + opened + ')');
@@ -438,6 +438,37 @@ async function main() {
   // Every other check reads main-process state. This one reads the screen,
   // because a redraw bug once duplicated tab elements while the tab list
   // itself stayed perfectly correct — invisible to a state-only assertion.
+  // /key deliberately does not force focus, because forcing it hid this:
+  // closing a focused tab left the keyboard pointed at a destroyed view, so
+  // the first Ctrl+W worked and every one after it did nothing.
+  await check('the keyboard still works after closing a tab', async () => {
+    await chrome(`(async function(){
+      var s=function(ms){return new Promise(function(r){setTimeout(r,ms);});};
+      for(var i=0;i<4;i++) await window.redlynx.newTab('https://example.com/');
+      await s(2500);
+    })()`);
+    const count = () => chrome('window.redlynx.tabState().then(function(s){return s.tabs.length;})');
+
+    // One real focus, as if the page had been clicked once.
+    await post('/key', { key: 'a', modifiers: [], target: 'page', focus: true });
+    await new Promise((r) => setTimeout(r, 800));
+
+    let n = await count();
+    const seen = [n];
+    for (let i = 0; i < 3; i++) {
+      await post('/key', { key: 'w', modifiers: ['control'] });
+      await new Promise((r) => setTimeout(r, 1300));
+      n = await count();
+      seen.push(n);
+    }
+    // Each press must close exactly one tab, with no re-focusing in between.
+    for (let i = 1; i < seen.length; i++) {
+      expect(seen[i] === seen[i - 1] - 1,
+        'Ctrl+W stopped closing tabs after press ' + i + ' (counts: ' + seen.join(' -> ') + ')');
+    }
+    return 'three presses, three tabs closed (' + seen.join(' -> ') + ')';
+  });
+
   await check('the tab strip matches the open tabs', async () => {
     const r = await chrome(`(async function(){
       var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms);});};

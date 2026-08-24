@@ -685,6 +685,11 @@ function setActive(id) {
   t.lastActive = Date.now();
   if (t.suspended) resumeTab(id);
   layout();
+  // Focus follows the active tab. Without this, closing a focused tab left
+  // the keyboard pointed at a destroyed view: the first Ctrl+W worked and
+  // every one after it went nowhere. Never steal focus from the chrome —
+  // that would yank the caret out of the omnibar mid-typing.
+  try { if (!chrome.webContents.isFocused()) t.view.webContents.focus(); } catch (e) {}
   pushTabs();
   pushNav();
 }
@@ -922,13 +927,24 @@ function startDebugServer() {
           keyCode: String(b.key || ''),
           modifiers: Array.isArray(b.modifiers) ? b.modifiers : [],
         };
-        // target 'chrome' presses the key with the toolbar focused, which is
-        // what a person does after clicking anywhere in the browser UI.
+        // Focusing before every keystroke hid a real bug where focus was lost
+        // after a close. By default the key goes to whatever actually holds
+        // focus, exactly as the OS would deliver it.
         let target;
+        const activeTab = tabs.get(activeId);
         if (b.target === 'chrome') target = chrome.webContents;
-        else { const t = tabs.get(activeId); target = t && t.view.webContents; }
+        else if (b.target === 'page') target = activeTab && activeTab.view.webContents;
+        else {
+          if (chrome.webContents.isFocused()) target = chrome.webContents;
+          else {
+            for (const [, t] of tabs) {
+              try { if (t.view.webContents.isFocused()) { target = t.view.webContents; break; } } catch (e) {}
+            }
+          }
+          if (!target) return send(res, 200, { ok: true, sent: null, note: 'nothing holds focus' });
+        }
         if (!target) return send(res, 400, { error: 'no target' });
-        target.focus();
+        if (b.focus) target.focus();
         target.sendInputEvent(ev);
         target.sendInputEvent(Object.assign({}, ev, { type: 'keyUp' }));
         return send(res, 200, { ok: true, sent: ev });
