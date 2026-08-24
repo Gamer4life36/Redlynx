@@ -9,7 +9,7 @@
  * ffmpeg for muxing. Detection happens in the page (preload) rather than via
  * session.webRequest, because the ad blocker already owns that hook.
  */
-const { ipcMain, app } = require('electron');
+const { ipcMain, app, session } = require('electron');
 const path = require('path');
 const EXE = process.platform === 'win32' ? '.exe' : '';
 const fs = require('fs');
@@ -126,7 +126,55 @@ function pump() {
   if (running < MAX_PARALLEL) pump();
 }
 
-function run(rec) {
+// Sites increasingly refuse anonymous downloaders — YouTube answers with
+// "Sign in to confirm you're not a bot". A browser already holds the cookies
+// that answer it, so hand yt-dlp the ones for this site only, never the whole
+// jar. The file holds live session cookies, so it is written private and
+// deleted the moment the download ends.
+async function cookieFile(url) {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '');
+    const jar = await session.fromPartition('persist:main').cookies.get({ domain: host });
+    if (!jar || !jar.length) return null;
+    const lines = ['# Netscape HTTP Cookie File', '# Written by Redlynx; deleted when the download ends.'];
+    for (const c of jar) {
+      const dom = c.domain.startsWith('.') ? c.domain : '.' + c.domain;
+      lines.push([
+        dom, 'TRUE', c.path || '/', c.secure ? 'TRUE' : 'FALSE',
+        Math.floor(c.expirationDate || 0), c.name, c.value,
+      ].join('\t'));
+    }
+    const f = path.join(app.getPath('temp'), 'rlx-cookies-' + Date.now() + '-' + process.pid + '.txt');
+    fs.writeFileSync(f, lines.join('\n') + '\n', { mode: 0o600 });
+    return f;
+  } catch (e) { return null; }
+}
+
+function dropCookieFile(f) {
+  if (!f) return;
+  try { fs.rmSync(f, { force: true }); } catch (e) {}
+}
+
+// yt-dlp needs a JavaScript runtime for YouTube now — without one it is
+// offered nothing but storyboard images and every video fails with a 403.
+// We already ship a runtime: our own binary is Node when ELECTRON_RUN_AS_NODE
+// is set, so this costs nothing extra to package.
+let jsRuntimeArgs = null;
+function jsRuntime(exe) {
+  if (jsRuntimeArgs !== null) return jsRuntimeArgs;
+  jsRuntimeArgs = [];
+  try {
+    // An older yt-dlp does not know the flag and would fail on it, so ask.
+    const help = require('child_process')
+      .execFileSync(exe, ['--help'], { encoding: 'utf8', windowsHide: true, timeout: 20000 });
+    if (help.indexOf('--js-runtimes') !== -1) {
+      jsRuntimeArgs = ['--js-runtimes', 'node:' + process.execPath];
+    }
+  } catch (e) {}
+  return jsRuntimeArgs;
+}
+
+async function run(rec) {
   const dir = outDir();
   const isGallery = rec.engine === 'gallery';
   const exe = enginePath(isGallery ? 'gallery-dl' : 'yt-dlp');
@@ -137,9 +185,19 @@ function run(rec) {
     return;
   }
 
+  // Claim the job before the first await. pump() looks for queued records,
+  // and fetching cookies yields — without this it would find this one again
+  // and start a second copy of the same download.
+  rec.status = 'downloading';
+  running++;
+  emit();
+
+  const cookies = await cookieFile(rec.url);
   const args = isGallery
-    ? ['-d', dir, rec.url]
-    : ['--newline', '--no-playlist', '--no-mtime',
+    ? [...(cookies ? ['--cookies', cookies] : []), '-d', dir, rec.url]
+    : [...jsRuntime(exe),
+       ...(cookies ? ['--cookies', cookies] : []),
+       '--newline', '--no-playlist', '--no-mtime',
        '--ffmpeg-location', engineDir(),
        '--print', 'after_move:IC_PATH\t%(filepath)s',
        '--print', 'after_move:IC_ID\t%(id)s',
@@ -148,14 +206,16 @@ function run(rec) {
        '-f', 'bv*+ba/b',
        rec.url];
 
-  rec.status = 'downloading';
-  running++;
-  emit();
-
   let proc;
   try {
-    proc = spawn(exe, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+    // ELECTRON_RUN_AS_NODE is inherited by the runtime yt-dlp spawns, which
+    // is what turns our own binary into the Node it needs.
+    proc = spawn(exe, args, {
+      windowsHide: true,
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8', ELECTRON_RUN_AS_NODE: '1' },
+    });
   } catch (e) {
+    dropCookieFile(cookies);
     rec.status = 'failed'; rec.error = String(e.message || e); running--; emit(); pump(); return;
   }
   rec._proc = proc;
@@ -199,6 +259,7 @@ function run(rec) {
   proc.stderr.on('data', feed);
 
   proc.on('close', (code) => {
+    dropCookieFile(cookies);
     running--;
     rec._proc = null;
     if (rec.status === 'canceled') { emit(); pump(); return; }
