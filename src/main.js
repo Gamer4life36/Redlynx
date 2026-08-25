@@ -159,7 +159,9 @@ const DEFAULT_PREFS = {
   askBeforeSaving: true,       // never store sensitive data silently
   suspendIdleTabs: true,
   sidebarPins: true,        // pinned tabs live on a rail, parked until clicked
-  railExpanded: false,      // ...icons only, or widened to show their titles
+  // Expanded by default: a column of favicons is only legible to someone who
+  // already knows what they pinned. The » button collapses it to icons.
+  railExpanded: true,
   autoCheckUpdates: true,   // asks GitHub for a version number; downloads nothing
   hiddenTopSites: [],   // shortcuts removed from the new tab page
   // Closing the last tab: quit like Chrome, or keep the window on a new tab
