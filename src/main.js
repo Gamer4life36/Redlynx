@@ -445,7 +445,12 @@ function tabState() {
     })),
   };
 }
-function pushTabs() { sendUI('tabs', tabState()); }
+function pushTabs() {
+  sendUI('tabs', tabState());
+  // Every tab change is worth persisting, so a crash costs a moment rather
+  // than half a minute of open tabs.
+  saveSessionSoon();
+}
 
 function navState() {
   const t = tabs.get(activeId);
@@ -800,6 +805,15 @@ function restoreSession() {
   return false;
 }
 setInterval(saveSession, 30000);
+
+// A crash or a force-quit skips before-quit, so anything since the last tick
+// was lost — up to thirty seconds of open tabs. Persist shortly after the tab
+// set actually changes instead, debounced so a burst of navigations writes once.
+let saveTimer = null;
+function saveSessionSoon() {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => { saveTimer = null; saveSession(); }, 1500);
+}
 app.on('before-quit', () => { saveSession(); Tor.stop(); });
 
 // ── window ────────────────────────────────────────────────────────
@@ -970,6 +984,14 @@ function startDebugServer() {
         try { walk(t.view.webContents.mainFrame); } catch (e) {}
         return send(res, 200, { ok: true, frames: urls });
       }
+      if (req.url === '/focus') {
+        const owners = [];
+        try { if (chrome.webContents.isFocused()) owners.push('chrome'); } catch (e) {}
+        for (const [, t] of tabs) {
+          try { if (t.view.webContents.isFocused()) owners.push('tab:' + t.id); } catch (e) {}
+        }
+        return send(res, 200, { ok: true, owners, activeId, windowFocused: win.isFocused() });
+      }
       if (req.url === '/winstate') {
         const t = tabs.get(activeId);
         return send(res, 200, {
@@ -1004,7 +1026,54 @@ function startDebugServer() {
 app.whenReady().then(async () => {
   blog('app ready');
   // Minimal by design: no native File/Edit/View menu bar at all.
-  Menu.setApplicationMenu(null);
+  // Accelerators live on a hidden application menu rather than on keyboard
+  // focus. Focus can briefly belong to nobody — the instant after a tab is
+  // destroyed and before the next one takes it — and a keypress landing in
+  // that gap did nothing at all, which is how "Ctrl+W stops working" looked.
+  // A menu accelerator fires whenever the window is focused, gap or no gap.
+  const fire = (key, mods) => () => sendUI('shortcut', {
+    key,
+    ctrlKey: !mods || mods.indexOf('ctrl') !== -1,
+    shiftKey: !!mods && mods.indexOf('shift') !== -1,
+    altKey: !!mods && mods.indexOf('alt') !== -1,
+  });
+  const activeWc = () => { const t = tabs.get(activeId); return t ? t.view.webContents : null; };
+  const zoom = (delta) => () => {
+    const wc2 = activeWc();
+    if (wc2) wc2.setZoomLevel(delta === 0 ? 0 : wc2.getZoomLevel() + delta);
+  };
+  const accel = [
+    { accelerator: 'CmdOrCtrl+T', click: fire('t') },
+    { accelerator: 'CmdOrCtrl+W', click: fire('w') },
+    { accelerator: 'CmdOrCtrl+Shift+T', click: fire('T', ['ctrl', 'shift']) },
+    { accelerator: 'CmdOrCtrl+Shift+N', click: fire('n', ['ctrl', 'shift']) },
+    { accelerator: 'CmdOrCtrl+L', click: fire('l') },
+    { accelerator: 'CmdOrCtrl+K', click: fire('k') },
+    { accelerator: 'CmdOrCtrl+F', click: fire('f') },
+    { accelerator: 'CmdOrCtrl+J', click: fire('j') },
+    { accelerator: 'CmdOrCtrl+H', click: fire('h') },
+    { accelerator: 'CmdOrCtrl+D', click: fire('d') },
+    { accelerator: 'CmdOrCtrl+P', click: fire('p') },
+    { accelerator: 'CmdOrCtrl+Shift+O', click: fire('o', ['ctrl', 'shift']) },
+    { accelerator: 'CmdOrCtrl+Shift+F', click: fire('f', ['ctrl', 'shift']) },
+    { accelerator: 'CmdOrCtrl+R', click: fire('r') },
+    { accelerator: 'CmdOrCtrl+Shift+R', click: fire('r', ['ctrl', 'shift']) },
+    { accelerator: 'CmdOrCtrl+Tab', click: fire('Tab') },
+    { accelerator: 'CmdOrCtrl+Shift+Tab', click: fire('Tab', ['ctrl', 'shift']) },
+    { accelerator: 'CmdOrCtrl+=', click: zoom(0.5) },
+    { accelerator: 'CmdOrCtrl+-', click: zoom(-0.5) },
+    { accelerator: 'CmdOrCtrl+0', click: zoom(0) },
+    { accelerator: 'F5', click: fire('F5') },
+    { accelerator: 'F11', click: () => { if (fullscreenTabId === activeId) leaveFullscreen(activeId); else enterFullscreen(activeId); } },
+    { accelerator: 'F12', click: () => { const wc2 = activeWc(); if (wc2) wc2.toggleDevTools(); } },
+  ];
+  for (let n = 1; n <= 9; n++) accel.push({ accelerator: 'CmdOrCtrl+' + n, click: fire(String(n)) });
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    { label: 'Redlynx', submenu: accel.map((a) => Object.assign({ label: a.accelerator }, a)) },
+  ]));
+  // The menu exists only to own the accelerators — it must never be seen.
+  try { win.setMenuBarVisibility(false); win.autoHideMenuBar = false; } catch (e) {}
   fs.mkdirSync(DATA_DIR, { recursive: true });
   if (!prefs.downloadDir) { prefs.downloadDir = path.join(app.getPath('downloads'), 'Redlynx'); savePrefs(prefs); }
   blog('getting session');
