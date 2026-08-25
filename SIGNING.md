@@ -7,6 +7,20 @@ between "works on my machine" and "someone else will install it".
 I can't do this part for you: a certificate is issued to a **verified identity**,
 which means a purchase and an ID check in your name.
 
+## What you are actually paying for
+
+Not a code review. No certificate authority reads your code or checks it for
+malware — they verify **who you are**, then issue a certificate that binds your
+name to the signature. The signature proves the installer came from you and has
+not been altered. It says nothing about whether the code is any good.
+
+This is why signed malware exists and is common, while a clean unsigned build
+gets a scary warning. Windows is measuring accountability, not safety.
+
+The money covers identity verification (documents, callbacks), the hardware
+token they post you, and access to a root certificate that Windows already
+trusts. That last part is what is genuinely scarce.
+
 ## What to buy
 
 Certificate authorities that issue Windows code-signing certificates include
@@ -31,6 +45,33 @@ That changes how signing runs, so pick the option that matches your setup:
 As an individual rather than a company, ask the CA about an **individual code
 signing certificate**; several issue them, with ID verification instead of
 business documents.
+
+### The cheap route: Azure Trusted Signing
+
+Microsoft runs its own signing service at roughly **$10/month** rather than
+hundreds per year, and it is a real, publicly trusted certificate — not a
+workaround. Identity validation still applies, and individuals are eligible.
+The key lives in Microsoft's HSM, so there is no USB token to keep track of and
+signing can run unattended.
+
+If the only thing standing between this build and other people's machines is
+the SmartScreen warning, this is the least painful way through it.
+
+## The free options, and what they cost you instead
+
+**Ship it unsigned.** Users see "Windows protected your PC", click *More info*,
+then *Run anyway*. Perfectly workable for yourself and people who already trust
+you. Most will not get past it.
+
+**Self-signed certificate.** Free, and makes the binary tamper-evident: you can
+tell whether a copy has been modified since you built it. Windows still shows
+the same warning to everyone else, because nothing vouches for the certificate.
+Useful for your own copies, useless for distribution — unless each person
+installs your certificate into their Trusted Root store by hand, which is a
+larger ask than clicking through one warning.
+
+**The portable build.** `dist/Redlynx 0.1.0.exe` needs no installer at all. It
+still trips SmartScreen on first run, but there is no install step to explain.
 
 ## Signing a build
 
