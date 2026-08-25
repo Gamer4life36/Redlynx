@@ -1,4 +1,4 @@
-REDLYNX — a free, standalone browser
+REDLYNX - a free, standalone browser
 
 Free, and staying free. No account, no subscription, no cloud, no company.
 
@@ -8,7 +8,7 @@ WHY WINDOWS WARNED YOU
 This installer is not signed, and that is a deliberate choice.
 
 A code-signing certificate costs a few hundred dollars a year, and nobody
-reads your code for it. It proves who wrote the software — not that the
+reads your code for it. It proves who wrote the software - not that the
 software is safe. Signed malware exists. Unsigned honest software gets a
 scary warning. Paying for that on free software is not happening.
 
@@ -21,7 +21,7 @@ WHAT IT DOES
   Blocks ads and trackers, using the same public filter lists uBlock Origin
   uses, including video ads on the large sites.
 
-  Downloads media — video, audio and image galleries — with yt-dlp,
+  Downloads media - video, audio and image galleries - with yt-dlp,
   gallery-dl and ffmpeg bundled in. Nothing to install, no website to paste
   a link into.
 
@@ -42,7 +42,7 @@ On this machine, in one folder, in ordinary files:
   %APPDATA%\Redlynx\redlynx
 
   History, bookmarks and settings are plain files. Readable by you, and by
-  anything else running as you — same as every browser.
+  anything else running as you - same as every browser.
 
   Saved logins are encrypted with Windows DPAPI, tied to your Windows
   account. Another account on the same PC cannot read them. If encryption
@@ -62,7 +62,7 @@ WHAT IT CANNOT DO
 
   It cannot patch itself in place. Pages are drawn by Chromium, which has
   security flaws found and fixed regularly, and a fix means replacing the
-  whole application — Chrome works the same way. Redlynx can fetch that
+  whole application - Chrome works the same way. Redlynx can fetch that
   replacement when one is published, but nothing is installed behind your
   back: it asks, you decide, and it applies when you quit. Turn the check off
   in Settings and it never contacts anything.
@@ -82,13 +82,13 @@ WHAT IT NEVER DOES
   No telemetry, no analytics, no crash reports, no identifiers.
   No accounts, no sync, no cloud.
   No phone-home, and no server that belongs to Redlynx. The one exception is
-  the update check, which asks GitHub for a version number — it can be turned
+  the update check, which asks GitHub for a version number - it can be turned
   off, and it carries nothing about you either way.
   No selling anything, because there is nothing collected to sell.
 
 Two background connections exist, both public and both optional:
 
-  * Ad-blocking filter lists refresh from their publishers — the same public
+  * Ad-blocking filter lists refresh from their publishers - the same public
     files every ad blocker downloads.
   * One update check, thirty seconds after launch, asking GitHub for a
     version number.

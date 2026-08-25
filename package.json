@@ -67,7 +67,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "shortcutName": "Redlynx",
-      "license": "build/notice.txt"
+      "license": "build/notice.txt",
+      "include": "build/installer.nsh"
     },
     "publish": [
       {
