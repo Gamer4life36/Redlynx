@@ -312,3 +312,37 @@ body.hasbg::before{
    Enter still runs the literal query, so it must not look like the default. */
 .osug.fix .ott{color:var(--accent);font-weight:600}
 .osug.fix .osb{font-style:italic}
+
+/* ── pinned tab rail ───────────────────────────────────────────────
+   Runs down the left edge beside the page, not above it. The chrome view is
+   given the whole window whenever the rail is showing, and the page view is
+   inset by exactly this width, so the two never overlap. */
+.rail{
+  position:fixed; left:0; top:var(--uiH,80px); bottom:0; width:54px;
+  background:var(--chrome); border-right:1px solid var(--bd);
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+  padding:8px 0; overflow-y:auto; overflow-x:hidden; z-index:5;
+}
+.rail::-webkit-scrollbar{width:0}
+.rail .pin{
+  position:relative; width:38px; height:38px; flex:0 0 38px; margin-left:8px;
+  border-radius:10px; cursor:pointer; border:1px solid transparent;
+  background:var(--panel); color:var(--txt);
+  display:flex; align-items:center; justify-content:center;
+  font-size:15px; font-weight:600; user-select:none;
+  transition:background .12s, border-color .12s, opacity .12s;
+}
+.rail .pin:hover{background:var(--panel2); border-color:var(--bd)}
+/* Parked tabs are dimmed: the rail shows at a glance what is actually running. */
+.rail .pin.parked{opacity:.45}
+.rail .pin.parked:hover{opacity:.8}
+.rail .pin.active{border-color:var(--accent); background:var(--panel2); opacity:1}
+/* The bar on the left edge marks the tab you are on, the way the tab strip does. */
+.rail .pin.active::before{
+  content:''; position:absolute; left:-5px; top:9px; bottom:9px;
+  width:3px; border-radius:0 3px 3px 0; background:var(--accent);
+}
+.rail .pin .fav{
+  width:24px; height:24px; border-radius:6px; object-fit:cover; display:block;
+}
+.rail .sep{width:26px; height:1px; background:var(--bd); flex:0 0 1px; margin:2px 0}

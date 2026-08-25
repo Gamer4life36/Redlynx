@@ -789,6 +789,56 @@ async function main() {
     return 'API key encrypted on disk and readable in memory';
   });
 
+  await check('pinned tabs move to the rail and stay parked until clicked', async () => {
+    const state = () => chrome('window.redlynx.tabState()');
+
+    const id = await chrome(`window.redlynx.newTab('https://en.wikipedia.org/wiki/Lynx')`);
+    await new Promise((r) => setTimeout(r, 4000));
+
+    // Pin it while sitting on a different tab: it should park immediately
+    // rather than keep a renderer alive for a tab nobody is looking at.
+    const other = (await state()).tabs.find((t) => t.id !== id);
+    if (other) {
+      await chrome(`window.redlynx.activateTab(${other.id})`);
+      await new Promise((r) => setTimeout(r, 700));
+    }
+    await chrome(`window.redlynx.pinTab(${id})`);
+    await new Promise((r) => setTimeout(r, 1200));
+
+    const pinned = (await state()).tabs.find((t) => t.id === id);
+    expect(pinned && pinned.pinned, 'the tab did not pin');
+    expect(pinned.suspended, 'a pinned tab was left running instead of parked');
+
+    // It belongs on the rail, and must not also be in the strip.
+    const ui = await chrome(`JSON.stringify({
+      rail: document.querySelectorAll('#rail .pin').length,
+      parked: document.querySelectorAll('#rail .pin.parked').length,
+      onRail: !!document.querySelector('#rail .pin[data-id="${id}"]'),
+      inStrip: !!document.querySelector('#tabs .tab[data-id="${id}"]'),
+      hidden: document.getElementById('rail').hidden
+    })`);
+    const u = JSON.parse(ui);
+    expect(!u.hidden, 'the rail stayed hidden with a tab pinned to it');
+    expect(u.onRail, 'the pinned tab is not on the rail');
+    expect(!u.inStrip, 'the pinned tab is still in the tab strip as well');
+    expect(u.parked > 0, 'nothing on the rail is marked parked');
+
+    // The page has to be inset by the rail, or it sits underneath it.
+    const bounds = await post('/winstate', {});
+    expect(bounds.tabBounds.x > 0, 'the page is not inset for the rail (x=' + bounds.tabBounds.x + ')');
+
+    // Clicking loads it.
+    await chrome(`document.querySelector('#rail .pin[data-id="${id}"]').click()`);
+    await new Promise((r) => setTimeout(r, 3500));
+    const woken = (await state()).tabs.find((t) => t.id === id);
+    expect(!woken.suspended, 'clicking a parked pin did not load it');
+
+    await chrome(`window.redlynx.pinTab(${id})`);
+    await new Promise((r) => setTimeout(r, 600));
+    await chrome(`window.redlynx.closeTab(${id})`);
+    return u.rail + ' on the rail, parked until clicked, page inset ' + bounds.tabBounds.x + 'px';
+  });
+
   await check('command palette opens', async () => {
     const n = await until(async () => {
       const v = await chrome(`new Promise(function(res){

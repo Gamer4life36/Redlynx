@@ -15,12 +15,61 @@ function clearDropMarks() {
     .forEach((n) => n.classList.remove('dropL', 'dropR'));
 }
 
+// Pinned tabs live on the rail, so the strip only shows the rest. Without
+// this they would appear twice.
+function renderRail() {
+  const rail = $('rail');
+  const pinned = state.tabs.filter((t) => t.pinned);
+  rail.hidden = pinned.length === 0;
+  // The toolbar's height changes when the bookmarks bar is shown, and the rail
+  // has to start below whatever is there — measured, not hardcoded, or the two
+  // drift apart the moment that bar is toggled.
+  const bmbar = $('bmbar');
+  const last = (bmbar && !bmbar.hidden && bmbar.offsetHeight) ? bmbar : document.querySelector('.omnibar');
+  const top = last ? Math.round(last.getBoundingClientRect().bottom) : 80;
+  document.documentElement.style.setProperty('--uiH', top + 'px');
+  rail.replaceChildren();
+  if (!pinned.length) return;
+
+  pinned.forEach((t) => {
+    const el = document.createElement('div');
+    el.className = 'pin'
+      + (t.id === state.activeId ? ' active' : '')
+      + (t.suspended ? ' parked' : '');
+    el.dataset.id = String(t.id);
+    let host = '';
+    try { host = new URL(t.url || '').hostname.replace(/^www\./, ''); } catch (e) {}
+    el.title = [
+      t.title || host || 'Pinned tab',
+      t.suspended ? 'parked — click to load' : '',
+      t.url || '',
+    ].filter(Boolean).join('\n');
+    // Favicon where there is one, initial where there is not. A rail of
+    // single letters is barely more useful than a rail of blank squares.
+    if (t.favicon) {
+      const img = document.createElement('img');
+      img.className = 'fav';
+      img.src = t.favicon;
+      img.alt = '';
+      img.onerror = () => { img.remove(); el.textContent = (host || '?')[0].toUpperCase(); };
+      el.appendChild(img);
+    } else {
+      el.textContent = (host || t.title || '?')[0].toUpperCase();
+    }
+    el.onclick = () => api.activateTab(t.id);
+    el.onauxclick = (e) => { if (e.button === 1) { e.preventDefault(); api.closeTab(t.id); } };
+    el.oncontextmenu = (e) => { e.preventDefault(); api.pinTab(t.id); };
+    rail.appendChild(el);
+  });
+}
+
 function renderTabs() {
   const host = $('tabs');
   // Every redraw rebuilds the strip. Without this the tabs are appended
   // again each time, so closing one appears to multiply them.
   host.replaceChildren();
-  state.tabs.forEach((t, index) => {
+  renderRail();
+  state.tabs.filter((t) => !t.pinned).forEach((t, index) => {
     const el = document.createElement('div');
     el.className = 'tab' + (t.id === state.activeId ? ' active' : '') + (t.suspended ? ' sus' : '') + (t.private ? ' priv' : '');
     el.dataset.id = String(t.id);
@@ -34,10 +83,10 @@ function renderTabs() {
     el.onauxclick = (e) => { if (e.button === 1) { e.preventDefault(); api.closeTab(t.id); } };
     el.onmousedown = (e) => { if (e.button === 1) e.preventDefault(); };
     el.querySelector('.cl').onclick = (e) => { e.stopPropagation(); api.closeTab(t.id); };
-    el.oncontextmenu = (e) => {
-      e.preventDefault();
-      if (t.id === state.activeId) api.pinTab(t.id); else api.suspendTab(t.id);
-    };
+    // Right-click pins to the rail. It used to pin the active tab and suspend
+    // any other, which meant the same gesture did two different things
+    // depending on which tab you aimed at.
+    el.oncontextmenu = (e) => { e.preventDefault(); api.pinTab(t.id); };
 
     // Drag to reorder. The drop side is decided by which half of the tab the
     // pointer is over, so a drag reads the same way it looks.

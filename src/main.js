@@ -67,7 +67,15 @@ app.commandLine.appendSwitch('disable-features', 'Translate,MediaRouter,Optimiza
 
 const UI_BASE = 80;                // 40 tabstrip + 40 omnibar
 const BM_BAR = 32;                 // bookmarks strip when shown
+const SIDEBAR_W = 54;              // pinned-tab rail down the left edge
 function uiHeight() { return UI_BASE + (prefs.showBookmarksBar ? BM_BAR : 0); }
+// The rail only takes space when something is pinned to it, so an empty
+// sidebar never steals width from the page.
+function sidebarWidth() {
+  if (prefs.sidebarPins === false) return 0;
+  for (const [, t] of tabs) if (t.pinned) return SIDEBAR_W;
+  return 0;
+}
 const ENGINES = {
   google:     { name: 'Google',     home: 'https://www.google.com',      q: 'https://www.google.com/search?q=' },
   duckduckgo: { name: 'DuckDuckGo', home: 'https://duckduckgo.com',      q: 'https://duckduckgo.com/?q=' },
@@ -147,6 +155,7 @@ const DEFAULT_PREFS = {
   blockThirdPartyCookies: true,
   askBeforeSaving: true,       // never store sensitive data silently
   suspendIdleTabs: true,
+  sidebarPins: true,        // pinned tabs live on a rail, parked until clicked
   autoCheckUpdates: true,   // asks GitHub for a version number; downloads nothing
   hiddenTopSites: [],   // shortcuts removed from the new tab page
   // Closing the last tab: quit like Chrome, or keep the window on a new tab
@@ -418,14 +427,25 @@ function layout() {
   }
 
   const h = uiHeight();
+  const rail = sidebarWidth();
   if (chrome) {
     chrome.setVisible(true);
-    chrome.setBounds(overlayOpen
+    // With a sidebar the chrome has to own the whole window, not just the top
+    // strip, because the rail runs the full height down the left. Its page is
+    // transparent and the tab view sits on top of it, so the page still gets
+    // its own clicks — the chrome only receives what the page does not cover.
+    chrome.setBounds(overlayOpen || rail
       ? { x: 0, y: 0, width: b.width, height: b.height }
       : { x: 0, y: 0, width: b.width, height: h });
   }
   const t = tabs.get(activeId);
-  if (t && t.view) t.view.setBounds({ x: 0, y: h, width: b.width, height: Math.max(0, b.height - h) });
+  if (t && t.view) {
+    t.view.setBounds({
+      x: rail, y: h,
+      width: Math.max(0, b.width - rail),
+      height: Math.max(0, b.height - h),
+    });
+  }
 }
 
 function enterFullscreen(id) {
@@ -476,7 +496,7 @@ function tabState() {
   return {
     activeId,
     tabs: [...tabs.values()].map((t) => ({
-      id: t.id, title: t.title || 'New tab', url: t.url || '',
+      id: t.id, title: t.title || 'New tab', url: t.url || '', favicon: t.favicon || '',
       suspended: !!t.suspended, pinned: !!t.pinned, loading: !!t.loading, private: !!t.private,
     })),
   };
@@ -537,6 +557,34 @@ function reopenTab() {
   return id;
 }
 
+// Favicons for the pinned rail.
+//
+// The chrome's CSP allows img-src 'self' data: only, and that is worth
+// keeping: the browser UI is privileged, and letting it fetch arbitrary
+// remote images from whatever a page declares is a tracking channel pointed
+// straight at the part of the app that has the API surface. So the icon is
+// fetched here, in the tab's own session — which means it honours the proxy,
+// Tor, and the blocker — and handed over as data: instead.
+const faviconCache = new Map();
+async function faviconData(wc, url) {
+  if (!url || !/^https?:/i.test(url)) return '';
+  if (faviconCache.has(url)) return faviconCache.get(url);
+  try {
+    const res = await wc.session.fetch(url);
+    if (!res.ok) return '';
+    const type = (res.headers.get('content-type') || '').split(';')[0].trim();
+    if (!/^image\//.test(type)) return '';
+    const buf = Buffer.from(await res.arrayBuffer());
+    // A favicon is a few KB. Anything much larger is not one, and does not
+    // belong inlined into every tab-state message either.
+    if (!buf.length || buf.length > 64 * 1024) return '';
+    const data = 'data:' + type + ';base64,' + buf.toString('base64');
+    if (faviconCache.size > 200) faviconCache.clear();
+    faviconCache.set(url, data);
+    return data;
+  } catch (e) { return ''; }
+}
+
 function createTab(url, opts) {
   url = url || newTabUrl();
   const background = !!(opts && opts.background);
@@ -563,6 +611,7 @@ function createTab(url, opts) {
     title: (opts && opts.title) || (lazy ? url : 'New tab'),
     suspended: lazy, suspendedUrl: lazy ? url : null,
     pinned: !!(opts && opts.pinned),
+    favicon: (opts && opts.favicon) || '',
     lastActive: Date.now(), loading: !lazy, private: priv,
   };
   tabs.set(id, t);
@@ -573,6 +622,14 @@ function createTab(url, opts) {
     // of yanking focus away. A link opened from a private tab stays private.
     createTab(u, { background: disposition === 'background-tab', private: t.private });
     return { action: 'deny' };
+  });
+  wc.on('page-favicon-updated', (_e, icons) => {
+    const next = Array.isArray(icons) && icons.length ? icons[0] : '';
+    if (!next || next === t.faviconUrl) return;
+    t.faviconUrl = next;
+    faviconData(wc, next).then((data) => {
+      if (data && t.favicon !== data) { t.favicon = data; pushTabs(); }
+    });
   });
   wc.on('page-title-updated', (_e, title) => { t.title = title; if (!t.private) History.setTitle(wc.getURL(), title); pushTabs(); });
   wc.on('did-start-loading', () => { t.loading = true; pushTabs(); if (t.id === activeId) pushNav(); });
@@ -801,6 +858,7 @@ function saveSession() {
       .map((t) => ({
         url: t.suspended ? (t.suspendedUrl || t.url) : (t.view.webContents.getURL() || t.url),
         title: t.title || '',
+        favicon: t.favicon || '',
         pinned: !!t.pinned,
         active: t.id === activeId,
       }))
@@ -817,9 +875,12 @@ function restoreSession() {
       // Every tab comes back, but only the one you were on actually loads —
       // so reopening 40 tabs costs about what reopening 1 does.
       s.tabs.forEach((x, i) => createTab(x.url, {
-        background: i !== active,
-        suspended: i !== active,
+        // A pinned tab is parked on restore whether or not it was the last one
+        // open: the point of the rail is that nothing on it runs until asked.
+        background: i !== active || !!x.pinned,
+        suspended: i !== active || !!x.pinned,
         title: x.title,
+        favicon: x.favicon,
         pinned: x.pinned,
       }));
       const ids = [...tabs.keys()];
@@ -1245,7 +1306,17 @@ ipcMain.handle('tab:move', (_e, { id, toIndex }) => {
 });
 ipcMain.handle('tab:activate', (_e, id) => setActive(id));
 ipcMain.handle('tab:suspend', (_e, id) => suspendTab(id));
-ipcMain.handle('tab:pin', (_e, id) => { const t = tabs.get(id); if (t) { t.pinned = !t.pinned; pushTabs(); } });
+ipcMain.handle('tab:pin', (_e, id) => {
+  const t = tabs.get(id);
+  if (!t) return;
+  t.pinned = !t.pinned;
+  // A pinned tab is a bookmark with a memory, not a running page. Anything
+  // pinned while it is not the tab you are looking at gets parked immediately;
+  // clicking it in the rail is what brings it back.
+  if (t.pinned && t.id !== activeId && !t.suspended) suspendTab(t.id);
+  layout();
+  pushTabs();
+});
 ipcMain.handle('tab:suspendOthers', () => {
   for (const [, t] of tabs) if (t.id !== activeId && !t.pinned) suspendTab(t.id);
   return true;
