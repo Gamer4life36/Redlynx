@@ -28,8 +28,20 @@ function renderRail() {
   const last = (bmbar && !bmbar.hidden && bmbar.offsetHeight) ? bmbar : document.querySelector('.omnibar');
   const top = last ? Math.round(last.getBoundingClientRect().bottom) : 80;
   document.documentElement.style.setProperty('--uiH', top + 'px');
+  const open = !!prefs.railExpanded;
+  rail.classList.toggle('open', open);
   rail.replaceChildren();
   if (!pinned.length) return;
+
+  // Collapsed the rail is a column of favicons, which is fine once you know
+  // what they are and useless before that. Expanded it says what each one is.
+  const toggle = document.createElement('button');
+  toggle.className = 'railtoggle';
+  toggle.title = open ? 'Collapse pinned pane' : 'Expand pinned pane';
+  toggle.setAttribute('aria-expanded', String(open));
+  toggle.textContent = open ? '«' : '»';
+  toggle.onclick = () => api.railToggle();
+  rail.appendChild(toggle);
 
   pinned.forEach((t) => {
     const el = document.createElement('div');
@@ -39,23 +51,40 @@ function renderRail() {
     el.dataset.id = String(t.id);
     let host = '';
     try { host = new URL(t.url || '').hostname.replace(/^www\./, ''); } catch (e) {}
-    el.title = [
-      t.title || host || 'Pinned tab',
-      t.suspended ? 'parked — click to load' : '',
-      t.url || '',
-    ].filter(Boolean).join('\n');
-    // Favicon where there is one, initial where there is not. A rail of
-    // single letters is barely more useful than a rail of blank squares.
+
+    const icon = document.createElement('span');
+    icon.className = 'ic';
     if (t.favicon) {
       const img = document.createElement('img');
       img.className = 'fav';
       img.src = t.favicon;
       img.alt = '';
-      img.onerror = () => { img.remove(); el.textContent = (host || '?')[0].toUpperCase(); };
-      el.appendChild(img);
+      img.onerror = () => { img.remove(); icon.textContent = (host || '?')[0].toUpperCase(); };
+      icon.appendChild(img);
     } else {
-      el.textContent = (host || t.title || '?')[0].toUpperCase();
+      icon.textContent = (host || t.title || '?')[0].toUpperCase();
     }
+    el.appendChild(icon);
+
+    // The text is always in the DOM and hidden by CSS when collapsed, so
+    // expanding is a width change rather than a rebuild.
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    const nm = document.createElement('span');
+    nm.className = 'nm';
+    nm.textContent = t.title || host || 'Pinned tab';
+    const sub = document.createElement('span');
+    sub.className = 'sub';
+    sub.textContent = t.suspended ? (host ? host + ' · parked' : 'parked') : host;
+    meta.appendChild(nm);
+    meta.appendChild(sub);
+    el.appendChild(meta);
+
+    el.title = [
+      t.title || host || 'Pinned tab',
+      t.suspended ? 'parked — click to load' : '',
+      t.url || '',
+    ].filter(Boolean).join('\n');
     el.onclick = () => api.activateTab(t.id);
     el.onauxclick = (e) => { if (e.button === 1) { e.preventDefault(); api.closeTab(t.id); } };
     el.oncontextmenu = (e) => { e.preventDefault(); api.tabMenu(t.id); };

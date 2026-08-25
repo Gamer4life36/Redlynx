@@ -67,13 +67,16 @@ app.commandLine.appendSwitch('disable-features', 'Translate,MediaRouter,Optimiza
 
 const UI_BASE = 80;                // 40 tabstrip + 40 omnibar
 const BM_BAR = 32;                 // bookmarks strip when shown
-const SIDEBAR_W = 54;              // pinned-tab rail down the left edge
+const SIDEBAR_W = 54;              // pinned-tab rail, icons only
+const SIDEBAR_W_OPEN = 232;        // ...expanded, with titles beside them
 function uiHeight() { return UI_BASE + (prefs.showBookmarksBar ? BM_BAR : 0); }
 // The rail only takes space when something is pinned to it, so an empty
 // sidebar never steals width from the page.
 function sidebarWidth() {
   if (prefs.sidebarPins === false) return 0;
-  for (const [, t] of tabs) if (t.pinned) return SIDEBAR_W;
+  for (const [, t] of tabs) {
+    if (t.pinned) return prefs.railExpanded ? SIDEBAR_W_OPEN : SIDEBAR_W;
+  }
   return 0;
 }
 const ENGINES = {
@@ -156,6 +159,7 @@ const DEFAULT_PREFS = {
   askBeforeSaving: true,       // never store sensitive data silently
   suspendIdleTabs: true,
   sidebarPins: true,        // pinned tabs live on a rail, parked until clicked
+  railExpanded: false,      // ...icons only, or widened to show their titles
   autoCheckUpdates: true,   // asks GitHub for a version number; downloads nothing
   hiddenTopSites: [],   // shortcuts removed from the new tab page
   // Closing the last tab: quit like Chrome, or keep the window on a new tab
@@ -1409,6 +1413,16 @@ ipcMain.handle('tab:menu', (_e, id) => {
   ];
   Menu.buildFromTemplate(items).popup({ window: win });
   return true;
+});
+ipcMain.handle('rail:toggle', () => {
+  prefs = { ...prefs, railExpanded: !prefs.railExpanded };
+  savePrefs(prefs);
+  // The page is inset by the rail's width, so widening it has to re-lay-out
+  // the view as well as the chrome.
+  layout();
+  sendUI('prefs', prefs);
+  pushTabs();
+  return prefs.railExpanded;
 });
 ipcMain.handle('tab:state', () => tabState());
 ipcMain.handle('nav:state', () => navState());

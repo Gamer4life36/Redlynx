@@ -146,7 +146,8 @@ async function main() {
   // The suite ends by enabling quit-on-last-tab, and the profile persists.
   // Clear it before anything runs, or the next run quits the moment some
   // other check happens to empty the tab list.
-  await chrome('window.redlynx.setPrefs({ closeWindowWithLastTab: false })').catch(() => {});
+  await chrome('window.redlynx.setPrefs({ closeWindowWithLastTab: false, railExpanded: false })')
+    .catch(() => {});
 
   await check('blocker installs cleanly', async () => {
     // On a first run there is no cached list, so the browser answers /info
@@ -827,6 +828,30 @@ async function main() {
     const bounds = await post('/winstate', {});
     expect(bounds.tabBounds.x > 0, 'the page is not inset for the rail (x=' + bounds.tabBounds.x + ')');
 
+    // Expanding has to widen the pane and move the page over with it, or the
+    // titles appear underneath the page instead of beside it. Start collapsed
+    // rather than trusting whatever the last run left in the profile.
+    await chrome('window.redlynx.setPrefs({ railExpanded: false })');
+    await new Promise((r) => setTimeout(r, 500));
+    const collapsed = await post('/winstate', {});
+    await chrome('window.redlynx.railToggle()');
+    await new Promise((r) => setTimeout(r, 700));
+    const expanded = await post('/winstate', {});
+    expect(expanded.tabBounds.x > collapsed.tabBounds.x,
+      'expanding the pane did not move the page over ('
+      + collapsed.tabBounds.x + ' -> ' + expanded.tabBounds.x + ')');
+    const shown = await chrome(`JSON.stringify({
+      width: Math.round(document.getElementById('rail').getBoundingClientRect().width),
+      titles: document.querySelectorAll('#rail .pin .nm').length,
+      visible: getComputedStyle(document.querySelector('#rail .pin .meta')).display
+    })`);
+    const sh = JSON.parse(shown);
+    expect(sh.visible !== 'none', 'the pane expanded but its titles stayed hidden');
+    expect(sh.titles > 0, 'no titles rendered in the expanded pane');
+    await chrome('window.redlynx.railToggle()');
+    await new Promise((r) => setTimeout(r, 600));
+
+
     // Clicking loads it.
     await chrome(`document.querySelector('#rail .pin[data-id="${id}"]').click()`);
     await new Promise((r) => setTimeout(r, 3500));
@@ -836,7 +861,8 @@ async function main() {
     await chrome(`window.redlynx.pinTab(${id})`);
     await new Promise((r) => setTimeout(r, 600));
     await chrome(`window.redlynx.closeTab(${id})`);
-    return u.rail + ' on the rail, parked until clicked, page inset ' + bounds.tabBounds.x + 'px';
+    return u.rail + ' pinned, parked until clicked, pane '
+      + collapsed.tabBounds.x + 'px collapsed and ' + sh.width + 'px expanded';
   });
 
   // The point of parking: a restored tab that was playing something must not
