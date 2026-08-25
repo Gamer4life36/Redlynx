@@ -36,12 +36,29 @@
     .search .ic{opacity:.7;font-size:15px}
     .tiles{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-top:32px}
     .tile{
+      position:relative;
       display:flex;flex-direction:column;align-items:center;gap:7px;padding:12px 6px;
       background:rgba(20,24,32,.6); border:1px solid rgba(255,255,255,.10);
       border-radius:12px; cursor:pointer; backdrop-filter:blur(10px);
       transition:transform .12s, border-color .12s, background .12s;
     }
     .tile:hover{transform:translateY(-2px);border-color:var(--accent);background:rgba(30,34,44,.76)}
+    /* The remove button only appears on hover, so the tiles stay clean, but it
+       is always in the DOM and always keyboard reachable. */
+    .tile .del{
+      position:absolute;top:4px;right:4px;width:18px;height:18px;line-height:16px;
+      border:0;border-radius:50%;cursor:pointer;font-size:11px;padding:0;
+      background:rgba(0,0,0,.45);color:var(--mut);opacity:0;transition:opacity .12s,background .12s,color .12s;
+    }
+    .tile:hover .del,.tile .del:focus{opacity:1}
+    .tile .del:hover{background:var(--accent);color:#fff}
+    .undo{
+      margin-top:14px;font-size:12px;color:var(--mut);opacity:0;transition:opacity .15s;
+    }
+    .undo.show{opacity:1}
+    .undo button{
+      background:none;border:0;color:var(--accent);cursor:pointer;font:inherit;text-decoration:underline;padding:0 4px;
+    }
     .tile .fav{
       width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;
       background:var(--accent);color:#fff;font-weight:700;font-size:14px;
@@ -62,6 +79,7 @@
       <input id="q" placeholder="Search the web, or type an address" autocomplete="off" spellcheck="false" autofocus>
     </form>
     <div class="tiles" id="tiles"></div>
+    <div class="undo" id="undo" aria-live="polite"></div>
   </div>
   <div class="hint">Set a background image or GIF in Settings → Appearance</div>
 
@@ -98,20 +116,68 @@
         document.getElementById('scrim').style.background =
           'rgba(10,12,16,' + Math.max(0, 0.55 - (cfg.opacity || 45) / 200) + ')';
       }
+      renderTiles(cfg.sites || []);
+    };
+
+    var undoTimer = null;
+
+    function renderTiles(sites) {
       const tiles = document.getElementById('tiles');
       tiles.innerHTML = '';
-      (cfg.sites || []).forEach((s) => {
+      sites.forEach((s) => {
         const el = document.createElement('div');
         el.className = 'tile';
         el.title = s.url;
-        el.innerHTML = '<div class="fav"></div><div class="nm"></div>';
+        el.innerHTML = '<button class="del" title="Remove" aria-label="Remove ' + s.host + '">✕</button>'
+                     + '<div class="fav"></div><div class="nm"></div>';
         el.querySelector('.fav').textContent = (s.host || '?')[0].toUpperCase();
         el.querySelector('.nm').textContent = s.host;
         el.onclick = () => { location.href = s.url; };
+        el.querySelector('.del').onclick = (e) => {
+          // Without this the click falls through to the tile and navigates —
+          // removing a shortcut would open it instead.
+          e.stopPropagation();
+          e.preventDefault();
+          removeSite(s.host);
+        };
         tiles.appendChild(el);
       });
-      if (!(cfg.sites || []).length) tiles.style.display = 'none';
-    };
+      tiles.style.display = sites.length ? '' : 'none';
+    }
+
+    function removeSite(host) {
+      if (!window.__redlynxNewTab) return;
+      window.__redlynxNewTab.hide(host).then((sites) => {
+        renderTiles(sites || []);
+        showUndo(host);
+      });
+    }
+
+    // A shortcut removed by accident should be one click from coming back.
+    function showUndo(host) {
+      const bar = document.getElementById('undo');
+      bar.innerHTML = '';
+      bar.appendChild(document.createTextNode('Removed ' + host + '.'));
+      const btn = document.createElement('button');
+      btn.textContent = 'Undo';
+      btn.onclick = () => {
+        window.__redlynxNewTab.restore(host).then((sites) => {
+          renderTiles(sites || []);
+          hideUndo();
+        });
+      };
+      bar.appendChild(btn);
+      bar.classList.add('show');
+      clearTimeout(undoTimer);
+      undoTimer = setTimeout(hideUndo, 8000);
+    }
+
+    function hideUndo() {
+      const bar = document.getElementById('undo');
+      bar.classList.remove('show');
+      clearTimeout(undoTimer);
+      setTimeout(() => { if (!bar.classList.contains('show')) bar.innerHTML = ''; }, 200);
+    }
   </script>
 </body>
 </html>

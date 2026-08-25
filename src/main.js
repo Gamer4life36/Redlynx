@@ -146,6 +146,7 @@ const DEFAULT_PREFS = {
   blockThirdPartyCookies: true,
   askBeforeSaving: true,       // never store sensitive data silently
   suspendIdleTabs: true,
+  hiddenTopSites: [],   // shortcuts removed from the new tab page
   // Closing the last tab: quit like Chrome, or keep the window on a new tab
   // like Firefox with browser.tabs.closeWindowWithLastTab off.
   closeWindowWithLastTab: false,
@@ -555,18 +556,7 @@ function createTab(url, opts) {
   wc.on('did-finish-load', () => {
     const u = wc.getURL() || '';
     if (!u.startsWith('redlynx://newtab')) return;
-    const sites = [];
-    const seen = new Map();
-    History.search('', 800).forEach((h) => {
-      try {
-        const host = new URL(h.url).hostname.replace(/^www\./, '');
-        const cur = seen.get(host);
-        if (!cur || (h.visits || 1) > cur.visits) {
-          seen.set(host, { url: h.url, title: h.title || host, host, visits: h.visits || 1 });
-        }
-      } catch (e) {}
-    });
-    [...seen.values()].sort((a, b) => b.visits - a.visits).slice(0, 12).forEach((x) => sites.push(x));
+    const sites = topSites();
     const cfg = {
       bg: bgUrl() && prefs.bgApplyNewTab ? bgUrl() : '',
       opacity: prefs.bgOpacity, blur: prefs.bgBlur, sites,
@@ -1452,18 +1442,43 @@ ipcMain.handle('bg:clear', () => {
   return true;
 });
 ipcMain.handle('bg:url', () => bgUrl());
-ipcMain.handle('newtab:topSites', () => {
+// Top sites for the new tab page. One definition, used by both the injector
+// and the IPC handler — they had drifted into two copies of the same loop.
+// Removals are remembered per host, so a site stays gone after a click.
+function topSites(limit) {
+  const hidden = new Set(prefs.hiddenTopSites || []);
   const seen = new Map();
   History.search('', 800).forEach((h) => {
     try {
+      // The new tab page itself is not a site anyone wants a shortcut to.
+      if (/^redlynx:/i.test(h.url)) return;
       const host = new URL(h.url).hostname.replace(/^www\./, '');
+      if (!host || hidden.has(host)) return;
       const cur = seen.get(host);
       if (!cur || (h.visits || 1) > cur.visits) {
         seen.set(host, { url: h.url, title: h.title || host, host, visits: h.visits || 1 });
       }
     } catch (e) {}
   });
-  return [...seen.values()].sort((a, b) => b.visits - a.visits).slice(0, 12);
+  return [...seen.values()].sort((a, b) => b.visits - a.visits).slice(0, limit || 12);
+}
+
+ipcMain.handle('newtab:topSites', () => topSites());
+ipcMain.handle('newtab:hide', (_e, host) => {
+  const h = String(host || '').trim();
+  if (!h) return topSites();
+  const hidden = new Set(prefs.hiddenTopSites || []);
+  hidden.add(h);
+  prefs = { ...prefs, hiddenTopSites: [...hidden] };
+  savePrefs(prefs);
+  return topSites();
+});
+ipcMain.handle('newtab:restore', (_e, host) => {
+  const h = String(host || '').trim();
+  const hidden = (prefs.hiddenTopSites || []).filter((x) => h ? x !== h : false);
+  prefs = { ...prefs, hiddenTopSites: hidden };
+  savePrefs(prefs);
+  return topSites();
 });
 
 ipcMain.handle('tab:newPrivate', (_e, url) => createTab(url || homeUrl(), { private: true }));

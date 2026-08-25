@@ -7,7 +7,7 @@
  *      ASK whether to save it. The value is never written anywhere by this
  *      script; it only travels to the main process, which prompts first.
  */
-const { ipcRenderer } = require('electron');
+const { ipcRenderer, contextBridge } = require('electron');
 
 // ── 0. Arm uBlock Origin's scriptlets, before the page runs ────────
 // YouTube's ads are scheduled inside the player response its own inline
@@ -310,3 +310,15 @@ document.addEventListener('click', (e) => {
     if (form && form.querySelector('input[type="password"]')) setTimeout(() => reportSensitive(form), 60);
   } catch (err) {}
 }, true);
+
+// ── the one exception to "no API for pages" ───────────────────────
+// Redlynx's own new tab page needs to remove a shortcut, which means calling
+// back into the browser. It gets exactly two calls and nothing else, and the
+// gate is the real location as seen from the isolated world — a web page
+// cannot forge redlynx://newtab, so no site can reach this.
+if (location.protocol === 'redlynx:' && location.hostname === 'newtab') {
+  contextBridge.exposeInMainWorld('__redlynxNewTab', {
+    hide: (host) => ipcRenderer.invoke('newtab:hide', String(host || '')),
+    restore: (host) => ipcRenderer.invoke('newtab:restore', String(host || '')),
+  });
+}

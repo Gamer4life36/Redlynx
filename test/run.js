@@ -600,6 +600,49 @@ async function main() {
     return 'exit ' + seen + ' (ours ' + (mine || '?') + '), onion loaded: "' + title.slice(0, 40) + '"';
   });
 
+  await check('new tab shortcuts can be removed and restored', async () => {
+    // Give the page something to show, then drive its own button.
+    for (const u of ['https://example.com/', 'https://www.mojeek.com/']) {
+      await nav(u);
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    await nav('redlynx://newtab/');
+    await new Promise((r) => setTimeout(r, 2000));
+
+    const before = await page(`[].map.call(document.querySelectorAll('.tile .nm'),function(n){return n.textContent;})`);
+    expect(before.length > 0, 'no shortcuts rendered to remove');
+    expect(!before.some((h) => /newtab|redlynx/i.test(h)),
+      'the new tab page listed itself as a shortcut: ' + before.join(', '));
+    const buttons = await page(`document.querySelectorAll('.tile .del').length`);
+    expect(buttons === before.length, buttons + ' remove buttons for ' + before.length + ' tiles');
+
+    const target = before.find((h) => h.indexOf('mojeek') > -1) || before[0];
+    const after = await page(`new Promise(function(res){
+      var t=[].slice.call(document.querySelectorAll('.tile')).find(function(x){
+        return x.querySelector('.nm').textContent === ${JSON.stringify(target)}; });
+      t.querySelector('.del').click();
+      setTimeout(function(){ res({
+        tiles: [].map.call(document.querySelectorAll('.tile .nm'),function(n){return n.textContent;}),
+        undo: document.getElementById('undo').innerText,
+        url: location.href }); }, 900);
+    })`);
+    expect(after.tiles.indexOf(target) === -1, target + ' is still on the page');
+    // Clicking the X must not fall through to the tile and navigate.
+    expect(after.url.indexOf('newtab') > -1, 'removing a shortcut navigated to ' + after.url);
+    expect(/undo/i.test(after.undo), 'no undo offered after removing');
+
+    // It has to survive a reload, or it is not really removed.
+    await nav('redlynx://newtab/');
+    await new Promise((r) => setTimeout(r, 1800));
+    const reloaded = await page(`[].map.call(document.querySelectorAll('.tile .nm'),function(n){return n.textContent;})`);
+    expect(reloaded.indexOf(target) === -1, target + ' came back after a reload');
+
+    const restored = await page(`window.__redlynxNewTab.restore(${JSON.stringify(target)})
+      .then(function(sites){ return sites.map(function(s){ return s.host; }); })`);
+    expect(restored.indexOf(target) > -1, 'undo did not restore ' + target);
+    return 'removed ' + target + ', persisted, then restored';
+  });
+
   await check('command palette opens', async () => {
     const n = await until(async () => {
       const v = await chrome(`new Promise(function(res){
