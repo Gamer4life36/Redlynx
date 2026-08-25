@@ -319,6 +319,13 @@ document.addEventListener('click', (e) => {
 // Settings moved out of a 400px panel and into a tab, which means it needs
 // the same calls the chrome had. Gated the same way: the real location, as
 // seen from the isolated world, which a web page cannot forge.
+// The parked placeholder needs exactly one call: wake this tab up.
+if (location.protocol === 'redlynx:' && location.hostname === 'parked') {
+  contextBridge.exposeInMainWorld('__redlynxParked', {
+    load: () => ipcRenderer.invoke('tab:resumeCurrent'),
+  });
+}
+
 if (location.protocol === 'redlynx:' && location.hostname === 'settings') {
   const call = (channel) => (...args) => ipcRenderer.invoke(channel, ...args);
   contextBridge.exposeInMainWorld('__redlynxSettings', {

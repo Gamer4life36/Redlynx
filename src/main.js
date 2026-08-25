@@ -337,6 +337,7 @@ function serveInternal(ses) {
     const rel = decodeURIComponent(u.pathname).replace(/^\/+/, '');
     if (u.hostname === 'newtab') return serve(path.join(__dirname, 'ui', 'newtab.html'));
     if (u.hostname === 'settings') return serve(path.join(__dirname, 'ui', 'settings.html'));
+    if (u.hostname === 'parked') return serve(path.join(__dirname, 'ui', 'parked.html'));
     // basename() on both keeps a crafted path from escaping the folder
     if (u.hostname === 'bg') return serve(path.join(BG_DIR, path.basename(rel)));
     if (u.hostname === 'asset') return serve(path.join(__dirname, 'ui', path.basename(rel)));
@@ -631,10 +632,21 @@ function createTab(url, opts) {
       if (data && t.favicon !== data) { t.favicon = data; pushTabs(); }
     });
   });
-  wc.on('page-title-updated', (_e, title) => { t.title = title; if (!t.private) History.setTitle(wc.getURL(), title); pushTabs(); });
+  wc.on('page-title-updated', (_e, title) => {
+    // The placeholder titles itself "<page> - parked". Letting that through
+    // overwrites the tab's real title, and since the placeholder is rebuilt
+    // from that title it compounds: "X - parked - parked - parked".
+    if (/^redlynx:\/\/parked/.test(wc.getURL() || '')) return;
+    t.title = title;
+    if (!t.private) History.setTitle(wc.getURL(), title);
+    pushTabs();
+  });
   wc.on('did-start-loading', () => { t.loading = true; pushTabs(); if (t.id === activeId) pushNav(); });
   wc.on('did-stop-loading', () => { t.loading = false; t.url = wc.getURL(); pushTabs(); if (t.id === activeId) pushNav(); });
   wc.on('did-navigate', (_e, u) => {
+    // The parked placeholder is scaffolding, not somewhere the user went: it
+    // must not overwrite the tab's real address or land in history.
+    if (/^redlynx:\/\/parked/.test(u || '')) { if (t.id === activeId) pushNav(); return; }
     t.url = u; Blocker.reset(id); Downloads.clearFound(id);
     if (!t.private) History.add(u, t.title);
     if (t.id === activeId) pushNav();
@@ -770,13 +782,24 @@ function createTab(url, opts) {
   return id;
 }
 
+let restoring = false;
 function setActive(id) {
   const t = tabs.get(id);
   if (!t) return;
   for (const [, other] of tabs) { if (other.view) other.view.setVisible(other.id === id); }
   activeId = id;
   t.lastActive = Date.now();
-  if (t.suspended) resumeTab(id);
+  if (t.suspended && !restoring) resumeTab(id);
+  // A lazily restored tab has no document at all — that is what makes lazy
+  // restore cheap. The one in front still needs something on screen, so it
+  // gets the placeholder rather than an empty frame that reads as a crash.
+  else if (t.suspended) {
+    const wc2 = t.view.webContents;
+    const showing = wc2.getURL() || '';
+    if (!showing || !/^redlynx:\/\/parked/.test(showing)) {
+      try { wc2.loadURL(parkedUrl(t)); } catch (e) {}
+    }
+  }
   layout();
   // Focus follows the active tab. Without this, closing a focused tab left
   // the keyboard pointed at a destroyed view: the first Ctrl+W worked and
@@ -825,12 +848,26 @@ function closeTab(id) {
 }
 
 // Power tabs: suspend an idle tab to free its RAM, keeping its strip entry.
-function suspendTab(id) {
+// Where a parked tab points instead of loading the real page. Showing a
+// blank frame would read as a broken tab; this says what is happening and
+// offers the click that fixes it.
+function parkedUrl(t) {
+  const q = new URLSearchParams();
+  q.set('u', t.suspendedUrl || t.url || '');
+  if (t.title) q.set('t', t.title);
+  if (t.favicon && t.favicon.startsWith('data:image/')) q.set('f', t.favicon);
+  return 'redlynx://parked/?' + q.toString();
+}
+
+function suspendTab(id, force) {
   const t = tabs.get(id);
-  if (!t || t.suspended || id === activeId) return;
+  if (!t || t.suspended) return;
+  if (id === activeId && !force) return;
   t.suspendedUrl = t.view.webContents.getURL() || t.url;
+  // A parked page must never keep the real address in history or in the bar.
+  if (/^redlynx:\/\/parked/.test(t.suspendedUrl)) t.suspendedUrl = t.url;
   t.suspended = true;
-  try { t.view.webContents.loadURL('about:blank'); } catch (e) {}
+  try { t.view.webContents.loadURL(parkedUrl(t)); } catch (e) {}
   pushTabs();
 }
 function resumeTab(id) {
@@ -875,16 +912,20 @@ function restoreSession() {
       // Every tab comes back, but only the one you were on actually loads —
       // so reopening 40 tabs costs about what reopening 1 does.
       s.tabs.forEach((x, i) => createTab(x.url, {
-        // A pinned tab is parked on restore whether or not it was the last one
-        // open: the point of the rail is that nothing on it runs until asked.
-        background: i !== active || !!x.pinned,
-        suspended: i !== active || !!x.pinned,
+        // Everything comes back parked, the front tab included.
+        background: true,
+        suspended: true,
         title: x.title,
         favicon: x.favicon,
         pinned: x.pinned,
       }));
       const ids = [...tabs.keys()];
+      // Select the tab that was in front, but do not wake it. Restoring a
+      // session should not start a video playing before the user has touched
+      // anything — nothing on the strip runs until it is clicked.
+      restoring = true;
       if (ids[active] != null) setActive(ids[active]);
+      restoring = false;
       return true;
     }
   } catch (e) {}
@@ -1214,6 +1255,14 @@ app.whenReady().then(async () => {
   Anon.applyProxy(ses);
   Menus.install({
     newTab: (u, o) => createTab(u, o || {}),
+    // Pinned and parked from the start: it goes on the rail holding a URL,
+    // and stays there costing nothing until it is clicked.
+    pinUrl: (u) => {
+      if (!u) return;
+      createTab(u, { background: true, suspended: true, pinned: true, title: u });
+      layout();
+      pushTabs();
+    },
     download: (u, kind) => Downloads.enqueue({ url: u, kind }),
     popOut: () => { const t = tabs.get(activeId); if (t) GX.popOut(t.view.webContents); },
     searchFor: (text) => createTab(searchUrl(text), {}),
@@ -1319,6 +1368,46 @@ ipcMain.handle('tab:pin', (_e, id) => {
 });
 ipcMain.handle('tab:suspendOthers', () => {
   for (const [, t] of tabs) if (t.id !== activeId && !t.pinned) suspendTab(t.id);
+  return true;
+});
+// Called by the parked placeholder when it is clicked. Resolves the tab from
+// the frame that asked, so a page cannot wake a different one.
+ipcMain.handle('tab:resumeCurrent', (e) => {
+  for (const [id, t] of tabs) {
+    if (t.view && t.view.webContents.id === e.sender.id) { resumeTab(id); return true; }
+  }
+  return false;
+});
+// Right-clicking a tab opens a real menu rather than silently toggling one
+// thing, so pinning is something you can find instead of something you have
+// to already know about.
+ipcMain.handle('tab:menu', (_e, id) => {
+  const t = tabs.get(id);
+  if (!t) return false;
+  const items = [
+    {
+      label: t.pinned ? 'Unpin from sidebar' : 'Pin to sidebar',
+      click: () => {
+        t.pinned = !t.pinned;
+        if (t.pinned && t.id !== activeId && !t.suspended) suspendTab(t.id);
+        layout();
+        pushTabs();
+      },
+    },
+    { type: 'separator' },
+    {
+      label: t.suspended ? 'Load this tab' : 'Park this tab',
+      enabled: t.suspended || t.id !== activeId,
+      click: () => { if (t.suspended) resumeTab(t.id); else suspendTab(t.id); },
+    },
+    { label: 'Duplicate tab', click: () => createTab(t.suspendedUrl || t.url, { background: true }) },
+    { type: 'separator' },
+    { label: 'Park other tabs', click: () => { for (const [, o] of tabs) if (o.id !== t.id) suspendTab(o.id); } },
+    { label: 'Close other tabs', click: () => { for (const id2 of [...tabs.keys()]) if (id2 !== t.id) closeTab(id2); } },
+    { type: 'separator' },
+    { label: 'Close tab', click: () => closeTab(t.id) },
+  ];
+  Menu.buildFromTemplate(items).popup({ window: win });
   return true;
 });
 ipcMain.handle('tab:state', () => tabState());

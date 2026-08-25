@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('redlynx', {
   reopenTab: () => ipcRenderer.invoke('tab:reopen'),
   suspendTab: (id) => ipcRenderer.invoke('tab:suspend', id),
   pinTab: (id) => ipcRenderer.invoke('tab:pin', id),
+  tabMenu: (id) => ipcRenderer.invoke('tab:menu', id),
   suspendOthers: () => ipcRenderer.invoke('tab:suspendOthers'),
   tabState: () => ipcRenderer.invoke('tab:state'),
 

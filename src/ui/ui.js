@@ -58,7 +58,7 @@ function renderRail() {
     }
     el.onclick = () => api.activateTab(t.id);
     el.onauxclick = (e) => { if (e.button === 1) { e.preventDefault(); api.closeTab(t.id); } };
-    el.oncontextmenu = (e) => { e.preventDefault(); api.pinTab(t.id); };
+    el.oncontextmenu = (e) => { e.preventDefault(); api.tabMenu(t.id); };
     rail.appendChild(el);
   });
 }
@@ -83,10 +83,7 @@ function renderTabs() {
     el.onauxclick = (e) => { if (e.button === 1) { e.preventDefault(); api.closeTab(t.id); } };
     el.onmousedown = (e) => { if (e.button === 1) e.preventDefault(); };
     el.querySelector('.cl').onclick = (e) => { e.stopPropagation(); api.closeTab(t.id); };
-    // Right-click pins to the rail. It used to pin the active tab and suspend
-    // any other, which meant the same gesture did two different things
-    // depending on which tab you aimed at.
-    el.oncontextmenu = (e) => { e.preventDefault(); api.pinTab(t.id); };
+    el.oncontextmenu = (e) => { e.preventDefault(); api.tabMenu(t.id); };
 
     // Drag to reorder. The drop side is decided by which half of the tab the
     // pointer is over, so a drag reads the same way it looks.

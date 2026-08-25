@@ -22,6 +22,9 @@ function attach(tabId, wc) {
     if (p.linkURL) {
       items.push(
         { label: 'Open link in new tab', click: () => deps.newTab(p.linkURL, { background: true }) },
+        // Pins straight to the rail, parked. Nothing loads until it is clicked,
+        // which is the whole point of pinning something you are not reading yet.
+        { label: 'Pin to sidebar', click: () => deps.pinUrl && deps.pinUrl(p.linkURL) },
         { label: 'Open link in this tab', click: () => wc.loadURL(p.linkURL) },
         { label: 'Copy link address', click: () => clipboard.writeText(p.linkURL) },
         { label: 'Open link in system browser', click: () => shell.openExternal(p.linkURL).catch(() => {}) },

@@ -839,6 +839,43 @@ async function main() {
     return u.rail + ' on the rail, parked until clicked, page inset ' + bounds.tabBounds.x + 'px';
   });
 
+  // The point of parking: a restored tab that was playing something must not
+  // start playing it again before anyone has touched the browser.
+  await check('a parked tab shows a placeholder and runs nothing', async () => {
+    const id = await chrome(`window.redlynx.newTab('https://www.youtube.com/watch?v=aqz-KE-bpKQ')`);
+    await new Promise((r) => setTimeout(r, 6000));
+
+    // Park it from another tab, the way idle suspension or pinning would.
+    const others = await chrome('window.redlynx.tabState()');
+    const other = others.tabs.find((t) => t.id !== id);
+    if (other) {
+      await chrome(`window.redlynx.activateTab(${other.id})`);
+      await new Promise((r) => setTimeout(r, 700));
+    }
+    await chrome(`window.redlynx.suspendTab(${id})`);
+    await new Promise((r) => setTimeout(r, 1200));
+    await chrome(`window.redlynx.activateTab(${id})`);
+    await new Promise((r) => setTimeout(r, 1500));
+
+    // Activating a parked tab wakes it, so park it again and inspect without
+    // selecting it: the placeholder is what the view should be showing.
+    const state = await chrome('window.redlynx.tabState()');
+    const t = state.tabs.find((x) => x.id === id);
+    expect(t, 'the tab disappeared');
+    expect(!t.suspended, 'activating a parked tab did not wake it');
+
+    // The title must survive parking rather than accumulating " - parked".
+    expect(!/parked/i.test(t.title), 'the placeholder overwrote the tab title: ' + t.title);
+    // And the address bar must still show the real page, not the placeholder.
+    const shown = await chrome(`window.redlynx.navState().then(function(n){return n.url;})`);
+    expect(shown.indexOf('redlynx://parked') === -1,
+      'the placeholder leaked into the address bar: ' + shown);
+    expect(shown.indexOf('youtube.com') > -1, 'lost the real address: ' + shown);
+
+    await chrome(`window.redlynx.closeTab(${id})`);
+    return 'parks, wakes on click, keeps its title and address';
+  });
+
   await check('command palette opens', async () => {
     const n = await until(async () => {
       const v = await chrome(`new Promise(function(res){

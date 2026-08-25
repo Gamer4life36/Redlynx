@@ -36,7 +36,7 @@
     .search .ic{opacity:.7;font-size:15px}
     .tiles{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-top:32px}
     .tile{
-      position:relative;
+      position:relative; text-decoration:none;
       display:flex;flex-direction:column;align-items:center;gap:7px;padding:12px 6px;
       background:rgba(20,24,32,.6); border:1px solid rgba(255,255,255,.10);
       border-radius:12px; cursor:pointer; backdrop-filter:blur(10px);
@@ -173,14 +173,17 @@
       const tiles = document.getElementById('tiles');
       tiles.innerHTML = '';
       sites.forEach((s) => {
-        const el = document.createElement('div');
+        // A real link, not a div: right-clicking it then gets the browser's
+        // own menu, including Pin to sidebar, for free.
+        const el = document.createElement('a');
+        el.href = s.url;
         el.className = 'tile';
         el.title = s.url;
         el.innerHTML = '<button class="del" title="Remove" aria-label="Remove ' + s.host + '">✕</button>'
                      + '<div class="fav"></div><div class="nm"></div>';
         el.querySelector('.fav').textContent = (s.host || '?')[0].toUpperCase();
         el.querySelector('.nm').textContent = s.host;
-        el.onclick = () => { location.href = s.url; };
+        el.onclick = (e) => { e.preventDefault(); location.href = s.url; };
         el.querySelector('.del').onclick = (e) => {
           // Without this the click falls through to the tile and navigates —
           // removing a shortcut would open it instead.
