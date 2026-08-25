@@ -1,0 +1,107 @@
+# Rebuild Redlynx on a newer Electron, without anyone doing it by hand.
+#
+# Chromium cannot be patched in place, so a security fix means a new build.
+# This does that build: monthly, or whenever you press the button. GitHub
+# runs it free for public repositories.
+#
+# It stops short of releasing. The result is a DRAFT release you look at and
+# publish yourself — an unattended major-version bump can ship something
+# broken, and users should not be the ones to find that out.
+
+name: Refresh engine
+
+on:
+  schedule:
+    # First of the month, 06:00 UTC. Chrome ships roughly every four weeks.
+    - cron: '0 6 1 * *'
+  workflow_dispatch:
+    inputs:
+      electron:
+        description: 'Electron version (blank = latest)'
+        required: false
+        default: ''
+
+jobs:
+  rebuild:
+    runs-on: windows-latest
+    permissions:
+      contents: write        # needed to create the draft release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Note the current engine
+        shell: bash
+        run: |
+          echo "before: $(node -p "require('./package.json').devDependencies.electron")"
+
+      - name: Install
+        run: npm ci
+
+      - name: Bump Electron
+        shell: bash
+        run: |
+          TARGET="${{ github.event.inputs.electron }}"
+          if [ -z "$TARGET" ]; then TARGET="latest"; fi
+          npm i -D electron@$TARGET
+          echo "after: $(node -p "require('./package.json').devDependencies.electron")"
+
+      - name: Bump the patch version
+        shell: bash
+        run: |
+          # A release needs a version users' installs can compare against.
+          npm version patch --no-git-tag-version
+          echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
+
+      # The suite drives live sites, which rate-limit CI runners and go down
+      # on their own schedule. A failure here is worth reading, not worth
+      # blocking a build over — the draft release is the real gate.
+      - name: Run the suite
+        id: suite
+        continue-on-error: true
+        run: npm test
+
+      - name: Download the bundled engines
+        shell: bash
+        run: |
+          mkdir -p engines
+          curl -sL -o engines/yt-dlp.exe \
+            https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe
+          echo "yt-dlp: $(./engines/yt-dlp.exe --version)"
+          # gallery-dl, ffmpeg and Tor are large and change rarely. Commit them
+          # to a release asset or fetch them here if you want them refreshed too.
+
+      - name: Build
+        run: npx electron-builder --win --publish never
+
+      - name: Draft a release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          tag_name: v${{ env.VERSION }}
+          name: Redlynx ${{ env.VERSION }}
+          body: |
+            Automatic engine refresh.
+
+            - Electron: bumped to the newest release
+            - Test suite: ${{ steps.suite.outcome }}
+
+            Unsigned, as always. Check the build before publishing this draft —
+            once published, installed copies will offer it to their users.
+          files: |
+            dist/Redlynx Setup ${{ env.VERSION }}.exe
+            dist/Redlynx ${{ env.VERSION }}.exe
+            dist/latest.yml
+
+      - name: Commit the bump
+        shell: bash
+        run: |
+          git config user.name  "Gamer4life36"
+          git config user.email "Gamer4life36@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "Engine refresh: Electron $(node -p "require('./package.json').devDependencies.electron"), v${{ env.VERSION }}" || echo "nothing to commit"
+          git push || echo "push skipped"

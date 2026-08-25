@@ -116,3 +116,23 @@ electron-builder timestamps signatures by default. This matters: without a
 timestamp, the signature stops validating the day the certificate expires, and a
 one-time build would go stale in a year. With one, it stays valid indefinitely.
 Nothing to configure — just don't disable it.
+
+## Not rebuilding by hand
+
+The updater downloads a build; it cannot make one. Electron ships as a single
+compiled bundle, so a Chromium security fix means a new binary — Chrome works
+the same way, replacing the whole application rather than patching it.
+
+What that means in practice: **the person publishing rebuilds once, and every
+user gets it automatically.** Users never rebuild. If you are the only user,
+you are both roles, which is why it can feel like constant work.
+
+To take it off your hands entirely, `.github/workflows/engine-refresh.yml`
+rebuilds on the first of each month (or on demand): it bumps Electron, runs
+the suite, builds installers, and opens a **draft** release.
+
+Draft, deliberately. An unattended major-version bump can produce a broken
+build, and users should not be the ones to discover that. You look at it and
+press publish; until you do, nobody is offered anything.
+
+It needs nothing but a GitHub repository — free for public ones.
