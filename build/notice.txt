@@ -60,10 +60,12 @@ WHAT IT CANNOT DO
   It cannot promise to be unhackable. No software can, and anyone claiming
   otherwise is selling something.
 
-  It does not update itself. This is a one-time build with no updater in it.
-  Pages are drawn by Chromium, which has security flaws found and fixed
-  regularly, and those fixes only arrive in a new build. Settings will tell
-  you how far behind the engine has drifted, whenever you ask it.
+  It cannot patch itself in place. Pages are drawn by Chromium, which has
+  security flaws found and fixed regularly, and a fix means replacing the
+  whole application — Chrome works the same way. Redlynx can fetch that
+  replacement when one is published, but nothing is installed behind your
+  back: it asks, you decide, and it applies when you quit. Turn the check off
+  in Settings and it never contacts anything.
 
   It cannot protect you from yourself. Blocking ads is not the same as
   blocking malware, and Tor hides where you are, not what you hand over.
@@ -79,13 +81,19 @@ WHAT IT NEVER DOES
 
   No telemetry, no analytics, no crash reports, no identifiers.
   No accounts, no sync, no cloud.
-  No update check, no phone-home, no server that belongs to Redlynx.
+  No phone-home, and no server that belongs to Redlynx. The one exception is
+  the update check, which asks GitHub for a version number — it can be turned
+  off, and it carries nothing about you either way.
   No selling anything, because there is nothing collected to sell.
 
-Left sitting idle, this browser makes no network requests at all. In normal
-use, one background connection exists: ad-blocking filter lists refresh from
-their publishers — the same public files every ad blocker downloads, carrying
-nothing about you. There is a button in Settings to do it by hand instead.
+Two background connections exist, both public and both optional:
+
+  * Ad-blocking filter lists refresh from their publishers — the same public
+    files every ad blocker downloads.
+  * One update check, thirty seconds after launch, asking GitHub for a
+    version number.
+
+Neither carries anything about you, and Settings can do both by hand instead.
 
 Everything else happens only when you ask: your searches go to the engine you
 chose, downloads to the site you are downloading from, and nowhere else.

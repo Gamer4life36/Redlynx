@@ -81,6 +81,19 @@
         answer. Forget a decision and that site will ask again.</div>
       </div>
             <div class="card">
+<div class="row"><b>Updates</b></div>
+      <div class="hint" id="updStatus">…</div>
+      <div class="row" style="gap:8px">
+        <button class="btn" id="updCheck">Check now</button>
+        <button class="btn accent" id="updAction" style="display:none"></button>
+      </div>
+      <label class="row"><input type="checkbox" data-pref="autoCheckUpdates"> <span>Check once at startup</span></label>
+      <div class="hint">Updates come from the project's GitHub releases. A check asks for a
+        version number and nothing else; nothing downloads until you press the button, and
+        nothing installs until you quit. Turn the checkbox off and the browser never contacts
+        it at all.</div>
+      </div>
+      <div class="card">
 <div class="row"><b>Engine</b></div>
       <div class="hint" id="engineNow">…</div>
       <div class="row" style="gap:8px">
@@ -347,6 +360,38 @@
     });
   }
 
+  function renderUpdate(u) {
+    var line = $('updStatus');
+    var act = $('updAction');
+    if (!u) return;
+    var map = {
+      unpackaged: 'Running from source — updates apply to installed builds.',
+      checking: 'Checking…',
+      available: 'Version ' + (u.version || '') + ' is available.',
+      downloading: 'Downloading ' + (u.percent != null ? Math.round(u.percent) + '%' : '…'),
+      ready: 'Version ' + (u.version || '') + ' is ready. It installs when you quit.',
+      current: 'Up to date (' + (u.version || '') + ').',
+      error: 'Could not check: ' + (u.error || ''),
+      idle: 'Not checked yet.',
+    };
+    line.textContent = map[u.status] || u.status || '';
+    act.style.display = 'none';
+    if (u.status === 'available') {
+      act.style.display = '';
+      act.textContent = 'Download';
+      act.onclick = async function () { renderUpdate(await api.updateDownload()); };
+    }
+    if (u.status === 'ready') {
+      act.style.display = '';
+      act.textContent = 'Quit and install';
+      act.onclick = function () { api.updateInstall(); };
+    }
+  }
+  $('updCheck').onclick = async function () {
+    renderUpdate({ status: 'checking' });
+    renderUpdate(await api.updateCheck());
+  };
+
   async function showEngine() {
     var v = await api.engineVersions();
     $('engineNow').textContent = 'Chromium ' + (v.chromium || '?')
@@ -415,6 +460,7 @@
 
     $('engineNow').textContent = 'Chromium ' + (navigator.userAgent.match(/Chrome\/([\d.]+)/) || [,'?'])[1]
       + ' · Electron ' + (navigator.userAgent.match(/Electron\/([\d.]+)/) || [,'?'])[1];
+    renderUpdate(await api.updateStatus());
     showZoom();
     refreshPerms();
     refreshExtensions();

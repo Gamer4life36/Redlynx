@@ -32,6 +32,7 @@ const Reader = require('./reader');
 const Deep = require('./deepsearch');
 const Tor = require('./tor');
 const Autocorrect = require('./autocorrect');
+const Updater = require('./updater');
 const Menus = require('./menus');
 const Anon = require('./anon');
 const Userscripts = require('./userscripts');
@@ -146,6 +147,7 @@ const DEFAULT_PREFS = {
   blockThirdPartyCookies: true,
   askBeforeSaving: true,       // never store sensitive data silently
   suspendIdleTabs: true,
+  autoCheckUpdates: true,   // asks GitHub for a version number; downloads nothing
   hiddenTopSites: [],   // shortcuts removed from the new tab page
   // Closing the last tab: quit like Chrome, or keep the window on a new tab
   // like Firefox with browser.tabs.closeWindowWithLastTab off.
@@ -1132,6 +1134,13 @@ app.whenReady().then(async () => {
     },
   });
   Anon.install(() => prefs);
+  Updater.install((ch, payload) => sendUI(ch, payload));
+  // One check, half a minute after launch so it never delays startup. It asks
+  // for a version number and nothing else — no download without consent, and
+  // no install until quit. Switch it off in Settings and nothing is contacted.
+  setTimeout(() => {
+    if (prefs.autoCheckUpdates) Updater.check().catch(() => {});
+  }, 30000);
   Tor.install({
     engineDir: () => { try { return Downloads.engineStatus().dir; } catch (e) { return null; } },
     dataDir: DATA_DIR,
@@ -1664,6 +1673,10 @@ ipcMain.handle('find:stop', (_e, keep) => {
 // no background check, nothing about them in the request, and nothing is
 // downloaded or installed. Chromium cannot be patched in place — a fix means
 // rebuilding — so the honest thing to offer is knowing where you stand.
+ipcMain.handle('update:status', () => Updater.status());
+ipcMain.handle('update:check', () => Updater.check());
+ipcMain.handle('update:download', () => Updater.download());
+ipcMain.handle('update:install', () => Updater.installNow());
 ipcMain.handle('engine:versions', async () => {
   const mine = {
     chromium: process.versions.chrome || '',

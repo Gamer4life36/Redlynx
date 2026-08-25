@@ -89,6 +89,8 @@ contextBridge.exposeInMainWorld('redlynx', {
   anonApply: () => ipcRenderer.invoke('anon:apply'),
   anonCheckIp: () => ipcRenderer.invoke('anon:checkIp'),
   anonDoh: () => ipcRenderer.invoke('anon:doh'),
+  updateStatus: () => ipcRenderer.invoke('update:status'),
+  updateCheck: () => ipcRenderer.invoke('update:check'),
   torStatus: () => ipcRenderer.invoke('anon:tor'),
   torState: () => ipcRenderer.invoke('tor:status'),
   torStart: () => ipcRenderer.invoke('tor:start'),
@@ -147,6 +149,7 @@ contextBridge.exposeInMainWorld('redlynx', {
   onOpenPanel: on('open-panel'),
   onPalette: on('palette'),
   onTor: on('tor'),
+  onUpdate: on('update'),
   onShortcut: on('shortcut'),
   // Tell the browser the chrome is drawing over the page, so its view can be
   // grown to full size and raised above it.

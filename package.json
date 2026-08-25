@@ -10,7 +10,8 @@
     "test": "node test/run.js",
     "build:signed": "electron-builder --win",
     "engine:check": "node scripts/engine-check.js",
-    "engine:refresh": "npm i -D electron@latest && npm test && npm run dist"
+    "engine:refresh": "npm i -D electron@latest && npm test && npm run dist",
+    "dist:publish": "electron-builder --win --publish always"
   },
   "author": "",
   "license": "MIT",
@@ -20,7 +21,8 @@
   },
   "dependencies": {
     "@ghostery/adblocker-electron": "^2.5.0",
-    "@mozilla/readability": "^0.6.0"
+    "@mozilla/readability": "^0.6.0",
+    "electron-updater": "^6.8.9"
   },
   "build": {
     "appId": "com.redlynx.browser",
@@ -56,7 +58,8 @@
       "target": [
         "nsis",
         "portable"
-      ]
+      ],
+      "verifyUpdateCodeSignature": false
     },
     "nsis": {
       "oneClick": false,
@@ -65,6 +68,13 @@
       "createDesktopShortcut": true,
       "shortcutName": "Redlynx",
       "license": "build/notice.txt"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Gamer4life36",
+        "repo": "Redlynx"
+      }
+    ]
   }
 }
