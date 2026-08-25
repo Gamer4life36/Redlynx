@@ -28,7 +28,6 @@ const Privacy = require('./privacy');
 const GX = require('./gx');
 const History = require('./history');
 const Extensions = require('./extensions');
-const Updater = require('./updater');
 const Reader = require('./reader');
 const Deep = require('./deepsearch');
 const Tor = require('./tor');
@@ -1138,7 +1137,6 @@ app.whenReady().then(async () => {
     .catch((e) => console.error('[blocker] install failed:', e && e.message));
   // Extensions have to be re-loaded on every boot; Electron does not persist
   // them across restarts the way Chrome does.
-  Updater.install((ch, payload) => sendUI(ch, payload));
   blog('window shown, async work starting');
   Extensions.install(ses, DATA_DIR)
     .then((r) => {
@@ -1166,10 +1164,6 @@ ipcMain.handle('reader:state', async () => {
 });
 
 // ── updates ───────────────────────────────────────────────────────
-ipcMain.handle('update:status', () => Updater.status());
-ipcMain.handle('update:check', () => Updater.check());
-ipcMain.handle('update:download', () => Updater.download());
-ipcMain.handle('update:install', () => Updater.installNow());
 
 // ── extensions ────────────────────────────────────────────────────
 ipcMain.handle('ext:list', () => Extensions.list());

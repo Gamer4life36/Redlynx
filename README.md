@@ -69,3 +69,39 @@ Electron 43 (Chromium), `@ghostery/adblocker-electron`, `@mozilla/readability`.
 ## Licence
 
 MIT
+
+## What Redlynx talks to
+
+A browser that quietly phones home is not private, whatever its marketing says,
+so here is the complete list. There is no telemetry, no analytics, no crash
+reporting and no account. Nothing about what you search or visit leaves the
+machine.
+
+**On its own, in the background — one thing only:**
+
+- Ad-blocking filter lists, refreshed every 12 hours from their publishers
+  (EasyList, uBlock Origin, AdGuard, Peter Lowe). These are public files
+  downloaded the same way by every ad blocker; the request says nothing about
+  you. Without refreshing them, blocking decays as sites change. There is a
+  "Refresh filter lists" button in Settings if you would rather do it by hand.
+
+**Only when you ask, and only to where you asked:**
+
+- Your searches, to whichever engine you chose.
+- Deep search, to the eleven indexes it queries — only when you run one.
+- Downloads, to the site you are downloading from.
+- The IP check in Anonymity, to `api.ipify.org` — only when you press it.
+- DNS-over-HTTPS, to the provider you picked, if you turn it on.
+- Tor, when you start it.
+- AI, to Anthropic — off by default, and dead code until you both enable it and
+  supply your own key. While off, no page content is read and nothing is sent.
+
+**Never:**
+
+- No update check. This is a one-time build with no updater in it at all — the
+  code was removed, not disabled.
+- No usage statistics, no error reporting, no "anonymous" identifiers.
+- No server belonging to Redlynx, because there isn't one.
+
+Verified rather than asserted: left idle for a minute on a blank page, the
+browser makes no network requests at all.

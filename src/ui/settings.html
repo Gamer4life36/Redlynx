@@ -80,15 +80,7 @@
       <div class="hint">Camera, location and the rest are denied until a site asks and you
         answer. Forget a decision and that site will ask again.</div>
       </div>
-      <div class="card">
-<div class="row"><b>Updates</b></div>
-      <div class="hint" id="updStatus">…</div>
-      <div class="row" style="gap:8px">
-        <button class="btn" id="updCheck">Check for updates</button>
-        <button class="btn accent" id="updAction" style="display:none"></button>
-      </div>
-      </div>
-      <div class="card">
+            <div class="card">
 <div class="row"><b>Extensions</b></div>
       <div id="extList" class="mut">None loaded.</div>
       <div class="row" style="gap:8px"><button class="btn" id="extAdd">+ Add extension folder</button></div>
@@ -343,33 +335,6 @@
     });
   }
 
-  function renderUpdate(u) {
-    var s = $('updStatus');
-    var act = $('updAction');
-    if (!u) return;
-    var map = {
-      unpackaged: 'Updates apply to installed builds only — this one runs from source.',
-      checking: 'Checking…',
-      available: 'Version ' + (u.version || '') + ' is available.',
-      downloading: 'Downloading ' + (u.percent != null ? Math.round(u.percent) + '%' : '…'),
-      downloaded: 'Version ' + (u.version || '') + ' is ready to install.',
-      'up-to-date': 'Up to date (' + (u.current || '') + ').',
-      error: 'Update check failed: ' + (u.error || ''),
-    };
-    s.textContent = map[u.status] || u.status || '';
-    act.style.display = 'none';
-    if (u.status === 'available') {
-      act.style.display = '';
-      act.textContent = 'Download';
-      act.onclick = function () { api.updateDownload(); };
-    }
-    if (u.status === 'downloaded') {
-      act.style.display = '';
-      act.textContent = 'Restart and install';
-      act.onclick = function () { api.updateInstall(); };
-    }
-  }
-
   async function showZoom() {
     $('zoomVal').textContent = (await api.zoomGet()) + '%';
   }
@@ -386,7 +351,6 @@
   $('bgClear').onclick = async function () { await api.bgClear(); toast('Background cleared.'); };
   $('resetAccent').onclick = function () { write({ accent: '#e63946' }); syncControls(); };
   $('extAdd').onclick = async function () { await api.extAdd(); refreshExtensions(); };
-  $('updCheck').onclick = async function () { renderUpdate(await api.updateCheck()); };
 
   async function boot() {
     if (!api) {
@@ -417,7 +381,6 @@
     refreshPerms();
     refreshExtensions();
     refreshVault();
-    renderUpdate(await api.updateStatus());
   }
 
   boot();

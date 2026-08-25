@@ -7,8 +7,8 @@
     "start": "electron .",
     "dist": "electron-builder --win nsis portable",
     "pack": "electron-builder --win --dir",
-    "dist:publish": "electron-builder --win nsis portable --publish always",
-    "test": "node test/run.js"
+    "test": "node test/run.js",
+    "build:signed": "electron-builder --win"
   },
   "author": "",
   "license": "MIT",
@@ -18,19 +18,11 @@
   },
   "dependencies": {
     "@ghostery/adblocker-electron": "^2.5.0",
-    "@mozilla/readability": "^0.6.0",
-    "electron-updater": "^6.8.9"
+    "@mozilla/readability": "^0.6.0"
   },
   "build": {
     "appId": "com.redlynx.browser",
     "productName": "Redlynx",
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "Gamer4life36",
-        "repo": "Redlynx"
-      }
-    ],
     "files": [
       "src/**/*",
       "package.json",
@@ -63,7 +55,9 @@
         "nsis",
         "portable"
       ],
-      "verifyUpdateCodeSignature": false
+      "signingHashAlgorithms": [
+        "sha256"
+      ]
     },
     "nsis": {
       "oneClick": false,
