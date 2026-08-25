@@ -56,9 +56,6 @@
       "target": [
         "nsis",
         "portable"
-      ],
-      "signingHashAlgorithms": [
-        "sha256"
       ]
     },
     "nsis": {
