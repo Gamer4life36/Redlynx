@@ -307,3 +307,8 @@ body.hasbg::before{
 #deepSources{line-height:1.5}
 /* The source picker stacks a name over its explanation. */
 #deepList label.row{display:flex;align-items:flex-start;border-bottom:0}
+
+/* A correction row reads as a suggestion, not as the thing you typed —
+   Enter still runs the literal query, so it must not look like the default. */
+.osug.fix .ott{color:var(--accent);font-weight:600}
+.osug.fix .osb{font-style:italic}

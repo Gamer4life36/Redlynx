@@ -692,6 +692,44 @@ async function main() {
     return st.cards + ' sections, ' + st.controls + ' controls, prefs round-trip';
   });
 
+  await check('the address bar suggests corrections without imposing them', async () => {
+    // Seed history so the corrector has the user's own vocabulary to learn.
+    await nav('https://en.wikipedia.org/wiki/Photosynthesis');
+    await new Promise((r) => setTimeout(r, 2000));
+
+    const ask = async (q) => {
+      const rows = await chrome(`window.redlynx.omniSuggest(${JSON.stringify(q)})`);
+      return { rows, fix: rows.find((r) => r.kind === 'correct') };
+    };
+
+    // Typos get an offer.
+    for (const [typo, want] of [['recieve', 'receive'], ['teh best browser', 'the best browser'],
+                                ['gogle.com', 'google.com']]) {
+      const { fix } = await ask(typo);
+      expect(fix && fix.title === want,
+        typo + ' -> ' + (fix ? fix.title : 'no correction') + ', expected ' + want);
+    }
+
+    // Learned from this machine's own history, not from a word list.
+    const learned = await ask('photosynthisis');
+    expect(learned.fix && learned.fix.title === 'photosynthesis',
+      'did not learn photosynthesis from history: ' + (learned.fix ? learned.fix.title : 'nothing'));
+
+    // The dangerous half. A search box that rewrites real words is worse than
+    // one that never corrects, so these must come back untouched.
+    for (const good of ['electron', 'how to tie a tie', 'photosynthesis', 'cat',
+                        '2024 election results', 'rust borrow checker']) {
+      const { fix } = await ask(good);
+      expect(!fix, 'wrongly offered to change ' + JSON.stringify(good) + ' to ' + (fix && fix.title));
+    }
+
+    // The literal query stays the first row, because that is what Enter does.
+    const { rows } = await ask('recieve');
+    expect(rows[0] && rows[0].kind !== 'correct',
+      'the correction displaced what the user actually typed');
+    return 'corrects typos, learns from history, leaves real words alone';
+  });
+
   await check('command palette opens', async () => {
     const n = await until(async () => {
       const v = await chrome(`new Promise(function(res){

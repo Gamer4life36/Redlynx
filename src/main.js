@@ -32,6 +32,7 @@ const Updater = require('./updater');
 const Reader = require('./reader');
 const Deep = require('./deepsearch');
 const Tor = require('./tor');
+const Autocorrect = require('./autocorrect');
 const Menus = require('./menus');
 const Anon = require('./anon');
 const Userscripts = require('./userscripts');
@@ -1531,6 +1532,19 @@ ipcMain.handle('hist:suggest', (_e, q) => History.suggest(q));
 // One ranked list, so the dropdown does not have to fetch and merge three
 // sources on every keystroke. The first row is always what Enter would do
 // right now, so the list never disagrees with the keyboard.
+// The corrector learns from history and bookmark titles. Rebuilding that on
+// every keystroke would be wasteful, so it refreshes at most once a minute.
+let vocabAt = 0;
+function refreshVocab() {
+  if (Date.now() - vocabAt < 60000) return;
+  vocabAt = Date.now();
+  try {
+    const texts = History.search('', 1500).map((h) => (h.title || '') + ' ' + (h.url || ''));
+    try { loadBM().forEach((n) => { if (n.title) texts.push(n.title); }); } catch (e) {}
+    Autocorrect.learn(texts);
+  } catch (e) {}
+}
+
 ipcMain.handle('omni:suggest', (_e, raw) => {
   const q = String(raw || '').trim();
   if (!q) return [];
@@ -1553,6 +1567,22 @@ ipcMain.handle('omni:suggest', (_e, raw) => {
   } else {
     push({ kind: 'search', title: q, url: searchUrl(q), sub: 'Search with ' + engine().name });
   }
+
+  // A correction is offered, never applied: Enter still does exactly what is
+  // in the box. This sits second so the literal action stays first.
+  refreshVocab();
+  try {
+    const fixed = Autocorrect.correct(q);
+    if (fixed && fixed.toLowerCase() !== q.toLowerCase()) {
+      const isDomain = /^[\w-]+(\.[\w-]+)+$/.test(fixed) && !/\s/.test(fixed);
+      push({
+        kind: 'correct',
+        title: fixed,
+        url: isDomain ? 'https://' + fixed : searchUrl(fixed),
+        sub: isDomain ? 'Did you mean this address?' : 'Did you mean this?',
+      });
+    }
+  } catch (e) {}
 
   const needle = q.toLowerCase();
   // Bookmarks first: the user kept these on purpose.

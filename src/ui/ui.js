@@ -108,7 +108,7 @@ url.addEventListener('blur', () => { urlFocused = false; renderNav(); });
 // History and bookmarks have been searchable all along; there was simply
 // nothing showing them. The first row is whatever Enter would do anyway, so
 // arrowing down never contradicts just pressing return.
-const SUG_ICONS = { search: '🔎', url: '🌐', bookmark: '★', history: '🕓' };
+const SUG_ICONS = { search: '🔎', url: '🌐', bookmark: '★', history: '🕓', correct: '✎' };
 let sugs = [];
 let sugSel = -1;
 let sugSeq = 0;
@@ -133,7 +133,7 @@ function renderSuggest() {
   drop.innerHTML = '';
   sugs.forEach((s, i) => {
     const row = document.createElement('div');
-    row.className = 'osug' + (i === sugSel ? ' sel' : '');
+    row.className = 'osug' + (i === sugSel ? ' sel' : '') + (s.kind === 'correct' ? ' fix' : '');
     row.innerHTML = '<div class="oic"></div><div class="otx"><div class="ott"></div><div class="osb"></div></div>';
     row.querySelector('.oic').textContent = SUG_ICONS[s.kind] || '🌐';
     row.querySelector('.ott').textContent = s.title;
