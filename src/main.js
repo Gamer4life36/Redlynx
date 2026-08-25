@@ -501,7 +501,12 @@ function tabState() {
   return {
     activeId,
     tabs: [...tabs.values()].map((t) => ({
-      id: t.id, title: t.title || 'New tab', url: t.url || '', favicon: t.favicon || '',
+      id: t.id,
+      title: t.title || 'New tab',
+      // A parked tab reports the page it holds, never the placeholder that is
+      // standing in for it.
+      url: (t.suspended ? (t.suspendedUrl || t.url) : t.url) || '',
+      favicon: t.favicon || '',
       suspended: !!t.suspended, pinned: !!t.pinned, loading: !!t.loading, private: !!t.private,
     })),
   };
@@ -646,7 +651,16 @@ function createTab(url, opts) {
     pushTabs();
   });
   wc.on('did-start-loading', () => { t.loading = true; pushTabs(); if (t.id === activeId) pushNav(); });
-  wc.on('did-stop-loading', () => { t.loading = false; t.url = wc.getURL(); pushTabs(); if (t.id === activeId) pushNav(); });
+  wc.on('did-stop-loading', () => {
+    t.loading = false;
+    // Same guard as did-navigate: the placeholder's own address must not
+    // become the tab's. Missing it here left a parked tab pointing at
+    // redlynx://parked, so the rail labelled it "P" for parked.
+    const u = wc.getURL() || '';
+    if (!/^redlynx:\/\/parked/.test(u)) t.url = u;
+    pushTabs();
+    if (t.id === activeId) pushNav();
+  });
   wc.on('did-navigate', (_e, u) => {
     // The parked placeholder is scaffolding, not somewhere the user went: it
     // must not overwrite the tab's real address or land in history.
@@ -655,7 +669,11 @@ function createTab(url, opts) {
     if (!t.private) History.add(u, t.title);
     if (t.id === activeId) pushNav();
   });
-  wc.on('did-navigate-in-page', (_e, u) => { t.url = u; if (t.id === activeId) pushNav(); });
+  wc.on('did-navigate-in-page', (_e, u) => {
+    if (/^redlynx:\/\/parked/.test(u || '')) return;
+    t.url = u;
+    if (t.id === activeId) pushNav();
+  });
 
   wc.on('found-in-page', (_e, r) => sendUI('find-result', { active: r.activeMatchOrdinal, total: r.matches }));
 

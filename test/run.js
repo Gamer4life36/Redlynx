@@ -890,6 +890,13 @@ async function main() {
     expect(t, 'the tab disappeared');
     expect(!t.suspended, 'activating a parked tab did not wake it');
 
+    // The tab must report the page it holds, not the placeholder standing in
+    // for it. Missing this on did-stop-loading left a parked tab pointing at
+    // redlynx://parked, and the rail labelled it "P".
+    const parkedTab = state.tabs.find((x) => x.id === id);
+    expect(parkedTab.url.indexOf('redlynx://parked') === -1,
+      'the placeholder address leaked into the tab: ' + parkedTab.url);
+
     // The title must survive parking rather than accumulating " - parked".
     expect(!/parked/i.test(t.title), 'the placeholder overwrote the tab title: ' + t.title);
     // And the address bar must still show the real page, not the placeholder.
