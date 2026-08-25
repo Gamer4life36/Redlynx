@@ -61,10 +61,30 @@ Function RedlynxDarkNoticePage
 
   ; The strip along the bottom of the window, behind the version line.
   SetCtlColors $HWNDPARENT e6e9ef 0f1115
+
+  ; NSIS draws its branding line in a small fixed font of its own, which is
+  ; where the pixelation shows. Give it Segoe UI at a readable size, and grow
+  ; the control to match or the taller glyphs get clipped.
   GetDlgItem $1 $HWNDPARENT 1256
   SetCtlColors $1 8b93a3 0f1115
+  System::Call 'gdi32::CreateFont(i -21, i 0, i 0, i 0, i 400, i 0, i 0, i 0,     i 1, i 0, i 0, i 5, i 0, t "Segoe UI") p .r2'
+  SendMessage $1 0x0030 $2 1   ; WM_SETFONT, by value so no extra include is needed
+  System::Call 'user32::GetWindowRect(p $1, @ r3)'
+  System::Call '*$3(i .r4, i .r5, i .r6, i .r7)'
+  IntOp $8 $6 - $4
+  IntOp $8 $8 + 60
+  IntOp $9 $7 - $5
+  IntOp $9 $9 + 8
+  ; SWP_NOMOVE|SWP_NOZORDER
+  System::Call 'user32::SetWindowPos(p $1, p 0, i 0, i 0, i r8, i r9, i 6)'
+  ; Repaint, or the area the old smaller label occupied keeps its pixels.
+  System::Call 'user32::InvalidateRect(p $HWNDPARENT, p 0, i 1)'
+  ; The branding line exists twice, as control 1028 and control 1256, sitting
+  ; on top of each other with the same text. Restyling one leaves the other
+  ; showing through in the old size, which reads as a doubled, blurry label.
+  ; Hide the duplicate and keep the one that was given a proper font.
   GetDlgItem $1 $HWNDPARENT 1028
-  SetCtlColors $1 8b93a3 0f1115
+  System::Call 'user32::ShowWindow(p $1, i 0)'
   GetDlgItem $1 $HWNDPARENT 1035
   SetCtlColors $1 8b93a3 0f1115
   GetDlgItem $1 $HWNDPARENT 1259
