@@ -380,9 +380,11 @@ async function main() {
   // Panels and prompts used to be clipped to an 80px strip and buried behind
   // the page, which made the save-password prompt impossible to click.
   await check('panels are not clipped behind the page', async () => {
-    await chrome(`(function(){ document.getElementById('btnSettings').click(); return 'x'; })()`);
+    // Settings moved into a tab, so the tallest remaining panel is the one
+    // that would show clipping — the point of the check, not the panel used.
+    await chrome(`(function(){ openPanel('panelAnon'); return 'x'; })()`);
     const r = await until(async () => chrome(`(function(){
-      var p=document.getElementById('panelSettings').getBoundingClientRect();
+      var p=document.getElementById('panelAnon').getBoundingClientRect();
       if(p.height < 50) return null;
       return { chromeH: window.innerHeight, panelH: Math.round(p.height),
                fits: (p.y + p.height) <= window.innerHeight };
@@ -641,6 +643,53 @@ async function main() {
       .then(function(sites){ return sites.map(function(s){ return s.host; }); })`);
     expect(restored.indexOf(target) > -1, 'undo did not restore ' + target);
     return 'removed ' + target + ', persisted, then restored';
+  });
+
+  await check('settings open in their own tab', async () => {
+    await chrome(`document.getElementById('btnSettings').click()`);
+    await new Promise((r) => setTimeout(r, 2500));
+    const url = await chrome(`window.redlynx.tabState().then(function(s){
+      var t = s.tabs.find(function(x){ return x.id === s.activeId; });
+      return t ? t.url : ''; })`);
+    expect(url.indexOf('redlynx://settings') === 0, 'settings did not open as a tab (' + url + ')');
+
+    // A page in a tab has none of the chrome's API, so the bridge is the whole
+    // thing working or not.
+    const state = await page(`JSON.stringify({
+      bridge: typeof window.__redlynxSettings,
+      cards: document.querySelectorAll('.card').length,
+      controls: document.querySelectorAll('[data-pref]').length,
+      engines: document.getElementById('engineSel').options.length,
+      dir: document.getElementById('dlDir2').textContent.length
+    })`);
+    const st = JSON.parse(state);
+    expect(st.bridge === 'object', 'the settings bridge is missing');
+    expect(st.cards > 8, 'only ' + st.cards + ' sections rendered');
+    expect(st.controls > 10, 'only ' + st.controls + ' preference controls');
+    expect(st.engines > 1, 'search engines never populated');
+    expect(st.dir > 0, 'download folder never filled in');
+
+    // A preference set on the page must reach the browser.
+    const before = await chrome('window.redlynx.getPrefs().then(function(p){return p.showBookmarksBar;})');
+    await page(`(function(){
+      var cb = document.querySelector('[data-pref="showBookmarksBar"]');
+      cb.checked = !cb.checked;
+      cb.dispatchEvent(new Event('change', { bubbles: true }));
+      return 'toggled';
+    })()`);
+    await new Promise((r) => setTimeout(r, 800));
+    const after = await chrome('window.redlynx.getPrefs().then(function(p){return p.showBookmarksBar;})');
+    expect(after !== before, 'changing a setting in the tab did not reach the browser');
+    await chrome(`window.redlynx.setPrefs({ showBookmarksBar: ${JSON.stringify(before)} })`);
+
+    // And a button whose panel lives in the chrome, not on the page.
+    await page(`document.querySelector('[data-openpanel="panelHistory"]').click()`);
+    await new Promise((r) => setTimeout(r, 900));
+    const opened = await chrome(`document.getElementById('panelHistory').classList.contains('open')`);
+    expect(opened, 'the Open button did not reach the chrome');
+    await chrome('closePanels()');
+
+    return st.cards + ' sections, ' + st.controls + ' controls, prefs round-trip';
   });
 
   await check('command palette opens', async () => {

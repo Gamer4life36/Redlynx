@@ -316,6 +316,37 @@ document.addEventListener('click', (e) => {
 // back into the browser. It gets exactly two calls and nothing else, and the
 // gate is the real location as seen from the isolated world — a web page
 // cannot forge redlynx://newtab, so no site can reach this.
+// Settings moved out of a 400px panel and into a tab, which means it needs
+// the same calls the chrome had. Gated the same way: the real location, as
+// seen from the isolated world, which a web page cannot forge.
+if (location.protocol === 'redlynx:' && location.hostname === 'settings') {
+  const call = (channel) => (...args) => ipcRenderer.invoke(channel, ...args);
+  contextBridge.exposeInMainWorld('__redlynxSettings', {
+    getPrefs: call('prefs:get'),
+    setPrefs: call('prefs:set'),
+    enginesList: call('engines:list'),
+    downloadDir: call('dl:dir'),
+    enginesReady: call('dl:enginesReady'),
+    permList: call('perm:list'),
+    permForget: (host, permission) => ipcRenderer.invoke('perm:forget', { host, permission }),
+    extList: call('ext:list'),
+    extAdd: call('ext:add'),
+    extRemove: call('ext:remove'),
+    updateStatus: call('update:status'),
+    updateCheck: call('update:check'),
+    updateDownload: call('update:download'),
+    updateInstall: call('update:install'),
+    bgPick: call('bg:pick'),
+    bgClear: call('bg:clear'),
+    vaultList: call('vault:list'),
+    vaultForget: call('vault:forget'),
+    importBookmarks: call('bm:import'),
+    zoomSet: call('zoom:set'),
+    zoomGet: call('zoom:get'),
+    openPanel: call('ui:openPanel'),
+  });
+}
+
 if (location.protocol === 'redlynx:' && location.hostname === 'newtab') {
   contextBridge.exposeInMainWorld('__redlynxNewTab', {
     hide: (host) => ipcRenderer.invoke('newtab:hide', String(host || '')),

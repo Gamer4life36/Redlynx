@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings — Redlynx</title>
+<!-- Shares the browser's own stylesheet, so themes and controls match exactly
+     and there is one place to change how a row looks. -->
+<link rel="stylesheet" href="redlynx://asset/ui.css">
+<style>
+  /* The panel was 400px wide and scrolled a long way. With a whole tab to
+     work with, the sections go into columns so most of it is visible at once. */
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--txt);
+       font:13px/1.45 system-ui,Segoe UI,sans-serif;overflow-y:auto}
+  .shell{max-width:1180px;margin:0 auto;padding:30px 26px 70px}
+  h1{font-size:23px;font-weight:650;margin:0 0 4px}
+  .sub{color:var(--mut);font-size:12.5px;margin-bottom:22px}
+  .cols{columns:2;column-gap:26px}
+  @media (max-width:980px){ .cols{columns:1} }
+  .card{
+    break-inside:avoid;display:inline-block;width:100%;
+    background:rgba(255,255,255,.02);border:1px solid var(--bd);
+    border-radius:10px;padding:12px 16px;margin:0 0 16px;
+  }
+  html[data-theme="light"] .card{background:rgba(0,0,0,.02)}
+  .card .sep:last-child{display:none}
+  .keyfield{width:100%}
+  .path{word-break:break-all}
+  .lim input[type=range]{width:100%}
+  .pins .row{padding:4px 0}
+</style>
+</head>
+<body>
+  <div class="shell">
+    <h1>Settings</h1>
+    <div class="sub">Changes save as you make them.</div>
+    <div class="cols">
+      <div class="card">
+<div class="row"><b>Search &amp; startup</b></div>
+      <div class="row">
+        <span class="mut">Search engine</span>
+        <select class="num sel" data-pref="searchEngine" id="engineSel"></select>
+      </div>
+      <div class="row">
+        <span class="mut">Home page</span>
+        <input class="num" style="flex:1" data-pref="homePage" placeholder="(search engine home)">
+      </div>
+      <div class="row">
+        <span class="mut">Page zoom</span>
+        <button class="btn mini" id="zoomOut">−</button>
+        <b id="zoomVal">100%</b>
+        <button class="btn mini" id="zoomIn">+</button>
+        <button class="btn mini" id="zoomReset">Reset</button>
+      </div>
+      <div class="row">
+        <button class="btn" id="importBm">⇪ Import bookmarks from Chrome/Edge</button>
+      </div>
+      </div>
+      <div class="card">
+<div class="row"><b>Toolbar</b><span class="mut">pin what you actually use</span></div>
+      <div class="pins">
+        <label class="row"><input type="checkbox" data-pin="favorites"> <span>★ Favorites</span><button class="btn mini" data-openpanel="panelFavs">Open</button></label>
+        <label class="row"><input type="checkbox" data-pin="history"> <span>🕘 History</span><button class="btn mini" data-openpanel="panelHistory">Open</button></label>
+        <label class="row"><input type="checkbox" data-pin="anon"> <span>🕵 Anonymity</span><button class="btn mini" data-openpanel="panelAnon">Open</button></label>
+        <label class="row"><input type="checkbox" data-pin="reader"> <span>📖 Reader mode</span></label>
+      <label class="row"><input type="checkbox" data-pin="aioverview"> <span>✦ Google AI Overview on/off</span></label>
+      <label class="row"><input type="checkbox" data-pin="downloads"> <span>📥 Downloads</span><button class="btn mini" data-openpanel="panelDownloads">Open</button></label>
+        <label class="row"><input type="checkbox" data-pin="gx"> <span>🎛 Control</span><button class="btn mini" data-openpanel="panelGX">Open</button></label>
+        <label class="row"><input type="checkbox" data-pin="ai"> <span>✨ AI assistant</span><button class="btn mini" data-openpanel="panelAI">Open</button></label>
+        <label class="row"><input type="checkbox" data-pin="media"> <span>⬇ Media on page</span><button class="btn mini" data-openpanel="panelMedia">Open</button></label>
+        <label class="row"><input type="checkbox" data-pin="shield"> <span>🛡 Blocked counter</span><button class="btn mini" data-openpanel="panelShield">Open</button></label>
+        <label class="row"><input type="checkbox" data-pin="pop"> <span>⧉ Pop-out video</span></label>
+        <label class="row"><input type="checkbox" data-pin="suspend"> <span>💤 Suspend others</span></label>
+      </div>
+      <div class="hint">Unpinned tools still work — open them from here, or with their shortcuts (Ctrl+J downloads).</div>
+      </div>
+      <div class="card">
+<div class="row"><b>Site permissions</b></div>
+      <div id="permList" class="mut">Nothing decided yet.</div>
+      <div class="hint">Camera, location and the rest are denied until a site asks and you
+        answer. Forget a decision and that site will ask again.</div>
+      </div>
+      <div class="card">
+<div class="row"><b>Updates</b></div>
+      <div class="hint" id="updStatus">…</div>
+      <div class="row" style="gap:8px">
+        <button class="btn" id="updCheck">Check for updates</button>
+        <button class="btn accent" id="updAction" style="display:none"></button>
+      </div>
+      </div>
+      <div class="card">
+<div class="row"><b>Extensions</b></div>
+      <div id="extList" class="mut">None loaded.</div>
+      <div class="row" style="gap:8px"><button class="btn" id="extAdd">+ Add extension folder</button></div>
+      <div class="hint">Unpacked extensions only — pick the folder containing manifest.json.
+        A .crx has to be unzipped first. Electron supports a large part of the extension
+        API but not all of it, so something unusual may not work.</div>
+      </div>
+      <div class="card">
+<label class="row"><input type="checkbox" data-pref="showBookmarksBar"> <span>Show bookmarks bar</span></label>
+      <div class="hint">Star a page to add it. Right-click anything on the bar to rename, delete, or file it into a folder.</div>
+      </div>
+      <div class="card">
+<div class="row"><b>Appearance</b></div>
+      <div class="row">
+        <span class="mut">Theme</span>
+        <select class="num sel" data-pref="theme">
+          <option value="dark">Dark</option>
+          <option value="midnight">Midnight (OLED black)</option>
+          <option value="light">Light</option>
+          <option value="rgb">RGB (animated rainbow)</option>
+        </select>
+      </div>
+      <div class="row"><b>Background</b><span class="mut">image or GIF</span></div>
+      <div class="row">
+        <button class="btn" id="bgPick">🖼 Choose image / GIF…</button>
+        <button class="btn mini" id="bgClear">Clear</button>
+      </div>
+      <div class="row"><span class="mut">Show behind</span>
+        <label class="row" style="padding:0"><input type="checkbox" data-pref="bgApplyChrome"> <span>Toolbar</span></label>
+        <label class="row" style="padding:0"><input type="checkbox" data-pref="bgApplyNewTab"> <span>New tab</span></label>
+      </div>
+      <div class="lim">
+        <div class="limhead"><span>Strength</span><b id="bgOpacityVal">45%</b></div>
+        <input type="range" min="5" max="100" step="5" data-pref="bgOpacity" id="bgOpacityRange">
+      </div>
+      <div class="lim">
+        <div class="limhead"><span>Blur</span><b id="bgBlurVal">0px</b></div>
+        <input type="range" min="0" max="24" step="1" data-pref="bgBlur" id="bgBlurRange">
+      </div>
+      <div class="row">
+        <span class="mut">New tab shows</span>
+        <select class="num sel" data-pref="newTabMode">
+          <option value="redlynx">Redlynx page (background + top sites)</option>
+          <option value="home">My home page</option>
+        </select>
+      </div>
+      </div>
+      <div class="card">
+<div class="row">
+        <span class="mut">Accent</span>
+        <input type="color" class="swatch" data-pref="accent">
+        <button class="btn" id="resetAccent">Reset</button>
+      </div>
+      </div>
+      <div class="card">
+<label class="row"><input type="checkbox" data-pref="suspendIdleTabs"> <span>Suspend idle tabs to save memory</span></label>
+      <label class="row"><input type="checkbox" data-pref="closeWindowWithLastTab"> <span>Closing the last tab closes the window</span></label>
+      <label class="row"><span>Suspend after</span> <input class="num" type="number" min="1" max="240" data-pref="suspendAfterMin"> <span class="mut">minutes</span></label>
+      </div>
+      <div class="card">
+<div class="row"><span class="mut">Downloads go to</span></div>
+      <div class="row"><code id="dlDir2" class="path"></code></div>
+      </div>
+      <div class="card">
+<div class="row"><b>Saved logins</b></div>
+      <div id="vaultList" class="mut">None saved.</div>
+      </div>
+      <div class="card">
+<div class="row"><b>AI</b></div>
+      <label class="row"><input type="checkbox" data-pref="aiEnabled"> <span>Enable AI features</span></label>
+      <div class="hint">Off by default. While off, no AI code runs and no page content
+        ever leaves this machine. With it on, page text is sent to your chosen provider
+        only when you click an AI action.</div>
+      <label class="row"><span class="mut">API key</span></label>
+      <input class="num keyfield" type="password" data-pref="aiKey" placeholder="paste your API key">
+      </div>
+      <div class="card">
+<div class="hint" id="engineState"></div>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+<script>
+(function () {
+  var api = window.__redlynxSettings;
+  var prefs = {};
+  var $ = function (id) { return document.getElementById(id); };
+
+  function toast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.classList.remove('show'); }, 2600);
+  }
+
+  // Theme is mirrored from the chrome so the page matches the browser around
+  // it. The chrome still owns applying it everywhere else — this page only
+  // writes the preference and restyles itself.
+  function lighten(hex, amt) {
+    var m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex || '');
+    if (!m) return hex;
+    var p = [1, 2, 3].map(function (i) {
+      return Math.min(255, parseInt(m[i], 16) + Math.round(255 * amt / 100));
+    });
+    return '#' + p.map(function (v) { return ('0' + v.toString(16)).slice(-2); }).join('');
+  }
+
+  function applyTheme() {
+    var t = prefs.theme || 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+    if (t === 'rgb') {
+      document.documentElement.style.removeProperty('--accent');
+      document.documentElement.style.removeProperty('--accent2');
+    } else {
+      var a = prefs.accent || '#e63946';
+      document.documentElement.style.setProperty('--accent', a);
+      document.documentElement.style.setProperty('--accent2', lighten(a, 22));
+    }
+    var sw = document.querySelector('[data-pref="accent"]');
+    if (sw) sw.disabled = (t === 'rgb');
+  }
+
+  function syncControls() {
+    document.querySelectorAll('[data-pref]').forEach(function (el) {
+      var v = prefs[el.dataset.pref];
+      if (el.type === 'checkbox') el.checked = !!v;
+      else el.value = v == null ? '' : v;
+    });
+    var pinned = prefs.pinned || {};
+    document.querySelectorAll('[data-pin]').forEach(function (el) {
+      el.checked = !!pinned[el.dataset.pin];
+    });
+    if ($('bgOpacityVal')) $('bgOpacityVal').textContent = (prefs.bgOpacity != null ? prefs.bgOpacity : 45) + '%';
+    if ($('bgBlurVal')) $('bgBlurVal').textContent = (prefs.bgBlur || 0) + 'px';
+    applyTheme();
+  }
+
+  function write(patch) {
+    prefs = Object.assign({}, prefs, patch);
+    applyTheme();
+    return api.setPrefs(patch);
+  }
+
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el || !el.dataset) return;
+    if (el.dataset.pref) {
+      var v = el.type === 'checkbox' ? el.checked
+            : (el.type === 'number' || el.type === 'range') ? Number(el.value)
+            : el.value;
+      var patch = {};
+      patch[el.dataset.pref] = v;
+      write(patch);
+    }
+    if (el.dataset.pin) {
+      var pinned = Object.assign({}, prefs.pinned || {});
+      pinned[el.dataset.pin] = el.checked;
+      write({ pinned: pinned });
+    }
+  });
+
+  // Ranges should show their value while dragging, not only on release.
+  document.addEventListener('input', function (e) {
+    var el = e.target;
+    if (!el) return;
+    if (el.id === 'bgOpacityRange') $('bgOpacityVal').textContent = el.value + '%';
+    if (el.id === 'bgBlurRange') $('bgBlurVal').textContent = el.value + 'px';
+  });
+
+  // These panels live in the browser chrome, not on this page, so the button
+  // asks the browser to open one rather than trying to render it here.
+  document.querySelectorAll('[data-openpanel]').forEach(function (b) {
+    b.onclick = function () { api.openPanel(b.dataset.openpanel); };
+  });
+
+  async function refreshPerms() {
+    var host = $('permList');
+    var rows = await api.permList();
+    host.innerHTML = '';
+    if (!rows || !rows.length) { host.className = 'mut'; host.textContent = 'Nothing decided yet.'; return; }
+    host.className = '';
+    rows.forEach(function (p) {
+      var row = document.createElement('div');
+      row.className = 'row';
+      var t = document.createElement('span');
+      t.style.flex = '1';
+      t.textContent = p.host + ' — ' + p.permission + ': ' + (p.allowed ? 'allowed' : 'blocked');
+      var b = document.createElement('button');
+      b.className = 'btn mini';
+      b.textContent = 'Forget';
+      b.onclick = async function () { await api.permForget(p.host, p.permission); refreshPerms(); };
+      row.appendChild(t);
+      row.appendChild(b);
+      host.appendChild(row);
+    });
+  }
+
+  async function refreshExtensions() {
+    var res = await api.extList();
+    var host = $('extList');
+    host.innerHTML = '';
+    var items = (res && res.items) || [];
+    if (!items.length) {
+      host.className = 'mut';
+      host.textContent = 'None loaded.';
+    } else {
+      host.className = '';
+      items.forEach(function (x) {
+        var row = document.createElement('div');
+        row.className = 'row';
+        var t = document.createElement('span');
+        t.style.flex = '1';
+        t.textContent = x.name + ' ' + (x.version || '');
+        var b = document.createElement('button');
+        b.className = 'btn mini';
+        b.textContent = 'Remove';
+        b.onclick = async function () { await api.extRemove(x.id); refreshExtensions(); };
+        row.appendChild(t);
+        row.appendChild(b);
+        host.appendChild(row);
+      });
+    }
+    ((res && res.failures) || []).forEach(function (f) {
+      var d = document.createElement('div');
+      d.className = 'hint';
+      d.style.color = 'var(--warn)';
+      d.textContent = 'Failed: ' + f;
+      host.appendChild(d);
+    });
+  }
+
+  async function refreshVault() {
+    var v = await api.vaultList();
+    var host = $('vaultList');
+    host.innerHTML = '';
+    if (!v || !v.length) { host.className = 'mut'; host.textContent = 'None saved.'; return; }
+    host.className = '';
+    v.forEach(function (e) {
+      var row = document.createElement('div');
+      row.className = 'row';
+      var t = document.createElement('span');
+      t.style.flex = '1';
+      t.textContent = e.host + (e.username ? ' — ' + e.username : '');
+      var b = document.createElement('button');
+      b.className = 'btn mini';
+      b.textContent = 'Forget';
+      b.onclick = async function () { await api.vaultForget(e.host); refreshVault(); };
+      row.appendChild(t);
+      row.appendChild(b);
+      host.appendChild(row);
+    });
+  }
+
+  function renderUpdate(u) {
+    var s = $('updStatus');
+    var act = $('updAction');
+    if (!u) return;
+    var map = {
+      unpackaged: 'Updates apply to installed builds only — this one runs from source.',
+      checking: 'Checking…',
+      available: 'Version ' + (u.version || '') + ' is available.',
+      downloading: 'Downloading ' + (u.percent != null ? Math.round(u.percent) + '%' : '…'),
+      downloaded: 'Version ' + (u.version || '') + ' is ready to install.',
+      'up-to-date': 'Up to date (' + (u.current || '') + ').',
+      error: 'Update check failed: ' + (u.error || ''),
+    };
+    s.textContent = map[u.status] || u.status || '';
+    act.style.display = 'none';
+    if (u.status === 'available') {
+      act.style.display = '';
+      act.textContent = 'Download';
+      act.onclick = function () { api.updateDownload(); };
+    }
+    if (u.status === 'downloaded') {
+      act.style.display = '';
+      act.textContent = 'Restart and install';
+      act.onclick = function () { api.updateInstall(); };
+    }
+  }
+
+  async function showZoom() {
+    $('zoomVal').textContent = (await api.zoomGet()) + '%';
+  }
+
+  $('zoomIn').onclick = async function () { await api.zoomSet(1); showZoom(); };
+  $('zoomOut').onclick = async function () { await api.zoomSet(-1); showZoom(); };
+  $('zoomReset').onclick = async function () { await api.zoomSet(0); showZoom(); };
+
+  $('importBm').onclick = async function () {
+    var n = await api.importBookmarks();
+    toast(n > 0 ? ('Imported ' + n + ' bookmarks.') : 'No bookmarks found to import.');
+  };
+  $('bgPick').onclick = async function () { await api.bgPick(); toast('Background set.'); };
+  $('bgClear').onclick = async function () { await api.bgClear(); toast('Background cleared.'); };
+  $('resetAccent').onclick = function () { write({ accent: '#e63946' }); syncControls(); };
+  $('extAdd').onclick = async function () { await api.extAdd(); refreshExtensions(); };
+  $('updCheck').onclick = async function () { renderUpdate(await api.updateCheck()); };
+
+  async function boot() {
+    if (!api) {
+      document.querySelector('.sub').textContent =
+        'This page can only run inside Redlynx.';
+      return;
+    }
+    prefs = await api.getPrefs();
+
+    var sel = $('engineSel');
+    (await api.enginesList()).forEach(function (e) {
+      var o = document.createElement('option');
+      o.value = e.id;
+      o.textContent = e.name;
+      sel.appendChild(o);
+    });
+
+    syncControls();
+    sel.value = prefs.searchEngine || 'google';
+
+    $('dlDir2').textContent = await api.downloadDir();
+    var ready = await api.enginesReady();
+    $('engineState').textContent = ready
+      ? 'Download engines ready: yt-dlp, gallery-dl and ffmpeg. Tor is bundled too.'
+      : 'Download engines missing — put yt-dlp.exe, gallery-dl.exe and ffmpeg.exe in an "engines" folder next to the app.';
+
+    showZoom();
+    refreshPerms();
+    refreshExtensions();
+    refreshVault();
+    renderUpdate(await api.updateStatus());
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

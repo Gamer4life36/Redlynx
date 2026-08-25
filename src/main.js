@@ -293,6 +293,7 @@ function serveInternal(ses) {
     const u = new URL(request.url);
     const rel = decodeURIComponent(u.pathname).replace(/^\/+/, '');
     if (u.hostname === 'newtab') return serve(path.join(__dirname, 'ui', 'newtab.html'));
+    if (u.hostname === 'settings') return serve(path.join(__dirname, 'ui', 'settings.html'));
     // basename() on both keeps a crafted path from escaping the folder
     if (u.hostname === 'bg') return serve(path.join(BG_DIR, path.basename(rel)));
     if (u.hostname === 'asset') return serve(path.join(__dirname, 'ui', path.basename(rel)));
@@ -1464,6 +1465,8 @@ function topSites(limit) {
 }
 
 ipcMain.handle('newtab:topSites', () => topSites());
+// The settings page runs in a tab, so panel buttons have to ask the chrome.
+ipcMain.handle('ui:openPanel', (_e, id) => { sendUI('open-panel', { id: String(id || '') }); return true; });
 ipcMain.handle('newtab:hide', (_e, host) => {
   const h = String(host || '').trim();
   if (!h) return topSites();

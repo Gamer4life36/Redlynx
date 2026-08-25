@@ -205,7 +205,7 @@ url.addEventListener('keydown', (e) => {
 });
 
 // ── panels ────────────────────────────────────────────────────────
-const PANELS = ['panelDownloads', 'panelMedia', 'panelShield', 'panelSettings', 'panelAI', 'panelGX', 'panelFavs', 'panelHistory', 'panelAnon', 'panelDeep'];
+const PANELS = ['panelDownloads', 'panelMedia', 'panelShield', 'panelAI', 'panelGX', 'panelFavs', 'panelHistory', 'panelAnon', 'panelDeep'];
 // Anything drawn over the page needs the chrome view grown and raised first,
 // or it is clipped to the top strip and hidden behind the site.
 function syncOverlay() {
@@ -222,10 +222,6 @@ function openPanel(id) {
   syncOverlay();
   if (id === 'panelDownloads') refreshDownloads();
   if (id === 'panelMedia') refreshMedia();
-  if (id === 'panelSettings') {
-    refreshSettings(); refreshExtensions(); refreshPerms();
-    api.updateStatus().then(renderUpdate).catch(() => {});
-  }
   if (id === 'panelAI') refreshAI();
   if (id === 'panelGX') refreshGX();
   if (id === 'panelFavs') refreshFavs();
@@ -255,7 +251,7 @@ $('btnPop').onclick = async () => {
 };
 $('btnDownloads').onclick = () => togglePanel('panelDownloads');
 $('btnShield').onclick = () => togglePanel('panelShield');
-$('btnSettings').onclick = () => togglePanel('panelSettings');
+$('btnSettings').onclick = () => api.newTab('redlynx://settings');
 $('shield').onclick = () => togglePanel('panelShield');
 $('grabBtn').onclick = () => togglePanel('panelMedia');
 function togglePanel(id) { const was = $(id).classList.contains('open'); closePanels(); if (!was) openPanel(id); }
@@ -454,6 +450,8 @@ function renderPrefs() {
   });
 }
 async function refreshSettings() {
+  // Settings live in their own tab now; nothing to refresh in the chrome.
+  if (!$('engineSel')) return;
   const sel = $('engineSel');
   if (sel && !sel.options.length) {
     (await api.enginesList()).forEach((e) => {
@@ -511,7 +509,7 @@ function commands() {
     { icon: '🔎', name: 'Find on page', key: 'Ctrl+F', run: () => openFind() },
     { icon: '🌐', name: 'Deep search (every index at once)', key: 'Ctrl+Shift+F', run: () => openDeep() },
     { icon: '💤', name: 'Suspend other tabs', run: async () => { await api.suspendOthers(); toast('Other tabs suspended.'); } },
-    { icon: '⚙', name: 'Settings', run: () => openPanel('panelSettings') },
+    { icon: '⚙', name: 'Settings', run: () => api.newTab('redlynx://settings') },
     { icon: '🛡', name: 'Protection', run: () => openPanel('panelShield') },
     { icon: '📥', name: 'Downloads', key: 'Ctrl+J', run: () => openPanel('panelDownloads') },
     { icon: '🕘', name: 'History', key: 'Ctrl+H', run: () => openPanel('panelHistory') },
@@ -524,7 +522,7 @@ function commands() {
     { icon: '✦', name: (prefs.hideAiOverview !== false ? 'Show' : 'Hide') + " Google's AI Overview",
       run: () => $('btnAio').click() },
     { icon: '↻', name: 'Refresh filter lists', run: () => $('refreshLists').click() },
-    { icon: '⬆', name: 'Check for updates', run: () => { openPanel('panelSettings'); setTimeout(() => $('updCheck').click(), 200); } },
+    { icon: '⬆', name: 'Check for updates', run: () => api.newTab('redlynx://settings') },
   ];
 }
 
@@ -623,6 +621,7 @@ const PERM_NAMES = {
 async function refreshPerms() {
   const host = $('permList');
   if (!host) return;
+  if (!host) return;
   let items = [];
   try { items = await api.permList(); } catch (e) {}
   host.innerHTML = '';
@@ -647,6 +646,7 @@ async function refreshPerms() {
 // ── updates ───────────────────────────────────────────────────────
 function renderUpdate(u) {
   const line = $('updStatus');
+  if (!line) return;
   const act = $('updAction');
   if (!line || !u) return;
   act.style.display = 'none';
@@ -673,7 +673,7 @@ function renderUpdate(u) {
   }
 }
 
-$('updCheck').onclick = async () => {
+if ($('updCheck')) $('updCheck').onclick = async () => {
   renderUpdate({ status: 'checking' });
   renderUpdate(await api.updateCheck());
 };
@@ -682,6 +682,7 @@ api.onUpdate((u) => renderUpdate(u));
 // ── extensions ────────────────────────────────────────────────────
 async function refreshExtensions() {
   const host = $('extList');
+  if (!host) return;
   if (!host) return;
   let r = { items: [], failures: [] };
   try { r = await api.extList(); } catch (e) {}
@@ -715,7 +716,7 @@ async function refreshExtensions() {
   });
 }
 
-$('extAdd').onclick = async () => {
+if ($('extAdd')) $('extAdd').onclick = async () => {
   const r = await api.extAdd();
   if (r && r.canceled) return;
   toast(r && r.ok ? ('Loaded ' + r.name) : ('Could not load: ' + ((r && r.error) || 'unknown')),
@@ -861,14 +862,15 @@ async function applyBg() {
   el.style.opacity = on ? (Number(prefs.bgOpacity || 45) / 100) : 0;
   el.style.filter = prefs.bgBlur ? ('blur(' + prefs.bgBlur + 'px)') : 'none';
   const o = $('bgOpacityVal'), b = $('bgBlurVal');
+  if (!o || !b) return;
   if (o) o.textContent = (prefs.bgOpacity || 45) + '%';
   if (b) b.textContent = (prefs.bgBlur || 0) + 'px';
 }
-$('bgPick').onclick = async () => {
+if ($('bgPick')) $('bgPick').onclick = async () => {
   const r = await api.bgPick();
   if (r && r.ok) { toast('Background set.'); applyBg(); }
 };
-$('bgClear').onclick = async () => { await api.bgClear(); toast('Background cleared.'); applyBg(); };
+if ($('bgClear')) $('bgClear').onclick = async () => { await api.bgClear(); toast('Background cleared.'); applyBg(); };
 ['bgOpacityRange', 'bgBlurRange'].forEach((id) => {
   const el = $(id);
   if (el) el.addEventListener('input', () => { prefs[el.dataset.pref] = Number(el.value); applyBg(); });
@@ -975,13 +977,13 @@ document.querySelectorAll('[data-clear]').forEach((b) => {
 $('btnHistory').onclick = () => togglePanel('panelHistory');
 
 // ── zoom ──────────────────────────────────────────────────────────
-async function showZoom() { $('zoomVal').textContent = (await api.zoomGet()) + '%'; }
-$('zoomIn').onclick = async () => { await api.zoomSet(1); showZoom(); };
-$('zoomOut').onclick = async () => { await api.zoomSet(-1); showZoom(); };
-$('zoomReset').onclick = async () => { await api.zoomSet(0); showZoom(); };
+async function showZoom() { const el = $('zoomVal'); if (el) el.textContent = (await api.zoomGet()) + '%'; }
+if ($('zoomIn')) $('zoomIn').onclick = async () => { await api.zoomSet(1); showZoom(); };
+if ($('zoomOut')) $('zoomOut').onclick = async () => { await api.zoomSet(-1); showZoom(); };
+if ($('zoomReset')) $('zoomReset').onclick = async () => { await api.zoomSet(0); showZoom(); };
 
 // ── import bookmarks ──────────────────────────────────────────────
-$('importBm').onclick = async () => {
+if ($('importBm')) $('importBm').onclick = async () => {
   const r = await api.importBookmarks();
   if (r && r.ok) { toast('Imported ' + r.count + ' bookmarks.'); renderBM(); }
   else toast((r && r.error) || 'Nothing to import.', 'err');
@@ -1246,7 +1248,7 @@ $('aiSummarize').onclick = async () => {
     await refreshAI('<div class="mut pad">' + ((r && r.error) || 'Something went wrong.') + '</div>');
   }
 };
-$('aiSettings').onclick = () => openPanel('panelSettings');
+$('aiSettings').onclick = () => api.newTab('redlynx://settings');
 
 // ── toast ─────────────────────────────────────────────────────────
 let toastTimer = null;
