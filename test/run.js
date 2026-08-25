@@ -91,6 +91,22 @@ async function googleBlocked() {
   return typeof t === 'string' && /unusual traffic/i.test(t);
 }
 
+// Focus moves asynchronously after a tab opens or closes, so a fixed sleep is
+// a race: too short and the next key lands while nothing holds focus. Wait for
+// the browser to say focus has settled instead. If it never does, the check
+// still fails — which is the point.
+async function focusSettled(timeout = 6000) {
+  const started = Date.now();
+  while (Date.now() - started < timeout) {
+    try {
+      const r = await post('/focus', {});
+      if (r.owners && r.owners.length) return r;
+    } catch (e) { /* between navigations */ }
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  return null;
+}
+
 async function startBrowser() {
   const electron = require(path.join(ROOT, 'node_modules', 'electron'));
   const logFile = path.join(__dirname, 'last-run.log');
@@ -437,17 +453,18 @@ async function main() {
 
     const start = await tabs();
     await post('/key', { key: 't', modifiers: ['control'], focus: true });
-    await new Promise((r) => setTimeout(r, 1200));
+    await focusSettled();
     const opened = await tabs();
     expect(opened === start + 1, 'Ctrl+T from a focused page did not open a tab (' + start + ' -> ' + opened + ')');
 
     await post('/key', { key: 'w', modifiers: ['control'] });
-    await new Promise((r) => setTimeout(r, 1200));
+    await focusSettled();
     const closed = await tabs();
     expect(closed === opened - 1, 'Ctrl+W from a focused page did not close a tab (' + opened + ' -> ' + closed + ')');
 
     await post('/key', { key: 'T', modifiers: ['control', 'shift'] });
-    await new Promise((r) => setTimeout(r, 1500));
+    await focusSettled();
+    await new Promise((r) => setTimeout(r, 600));
     const back = await tabs();
     expect(back === closed + 1, 'Ctrl+Shift+T did not reopen the closed tab (' + closed + ' -> ' + back + ')');
 
@@ -499,7 +516,7 @@ async function main() {
     const seen = [n];
     for (let i = 0; i < 3; i++) {
       await post('/key', { key: 'w', modifiers: ['control'] });
-      await new Promise((r) => setTimeout(r, 1300));
+      await focusSettled();
       n = await count();
       seen.push(n);
     }
