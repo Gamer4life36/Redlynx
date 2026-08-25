@@ -19,6 +19,14 @@
 ; Set as an installer attribute rather than a page hook: a page-level define
 ; is consumed by whichever page macro comes next, and here that turned out to
 ; be the *uninstaller's* welcome page, which failed the build outright.
+; Match the browser's own theme: --bg 0f1115, --txt e6e9ef, --accent e63946.
+; MUI can colour the pages it draws itself and the notice box; the grey frame
+; around them belongs to the Windows dialog resource and is not ours to paint
+; without shipping a custom UI, which is not worth the weight.
+!define MUI_BGCOLOR "0f1115"
+!define MUI_TEXTCOLOR "e6e9ef"
+!define MUI_LICENSEPAGE_BGCOLOR "0f1115"
+
 !macro customHeader
   SetFont "Segoe UI" 11
 !macroend

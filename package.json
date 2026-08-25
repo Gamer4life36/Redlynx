@@ -5,13 +5,14 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win nsis portable",
+    "dist": "npm run notice && electron-builder --win",
     "pack": "electron-builder --win --dir",
     "test": "node test/run.js",
-    "build:signed": "electron-builder --win",
+    "build:signed": "npm run notice && electron-builder --win",
     "engine:check": "node scripts/engine-check.js",
     "engine:refresh": "npm i -D electron@latest && npm test && npm run dist",
-    "dist:publish": "electron-builder --win --publish always"
+    "dist:publish": "electron-builder --win --publish always",
+    "notice": "node scripts/make-notice-rtf.js"
   },
   "author": "",
   "license": "MIT",
@@ -67,8 +68,14 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "shortcutName": "Redlynx",
-      "license": "build/notice.txt",
-      "include": "build/installer.nsh"
+      "license": "build/notice.rtf",
+      "include": "build/installer.nsh",
+      "installerIcon": "branding/icon-3-redline-eye.ico",
+      "uninstallerIcon": "branding/icon-3-redline-eye.ico",
+      "installerHeaderIcon": "branding/icon-3-redline-eye.ico",
+      "installerHeader": "build/header.bmp",
+      "installerSidebar": "build/sidebar.bmp",
+      "uninstallerSidebar": "build/sidebar.bmp"
     },
     "publish": [
       {
