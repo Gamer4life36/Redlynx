@@ -750,6 +750,28 @@ async function main() {
     return 'corrects in the address bar and the new tab search, leaves real words alone';
   });
 
+  // The installer promises saved logins and API keys never touch the disk in
+  // the clear. That promise is worth a check, not a comment.
+  await check('secrets are encrypted at rest, or not written at all', async () => {
+    const marker = 'rlx-secret-' + 'canary-value';
+    await chrome(`window.redlynx.setPrefs({ aiKey: ${JSON.stringify(marker)} })`);
+    await new Promise((r) => setTimeout(r, 800));
+
+    const prefsPath = path.join(os.tmpdir(), 'redlynx-test-profile', 'redlynx', 'prefs.json');
+    const raw = fs.readFileSync(prefsPath, 'utf8');
+    expect(raw.indexOf(marker) === -1, 'the API key was written to prefs.json in plaintext');
+    const saved = JSON.parse(raw);
+    expect(!saved.aiKey, 'a plaintext aiKey field survived on disk');
+    expect(!!saved.aiKeyEnc, 'the key was not stored in encrypted form either');
+
+    // And it has to still work, or "encrypted" just means "lost".
+    const back = await chrome('window.redlynx.getPrefs().then(function(p){return p.aiKey;})');
+    expect(back === marker, 'the key did not decrypt back (' + JSON.stringify(back) + ')');
+
+    await chrome(`window.redlynx.setPrefs({ aiKey: '' })`);
+    return 'API key encrypted on disk and readable in memory';
+  });
+
   await check('command palette opens', async () => {
     const n = await until(async () => {
       const v = await chrome(`new Promise(function(res){

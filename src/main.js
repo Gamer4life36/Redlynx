@@ -7,7 +7,7 @@
  *   • power tab management (suspend, session restore, search)
  *   • privacy hardening, and NOTHING sensitive saved without asking first
  */
-const { app, BaseWindow, BrowserWindow, WebContentsView, ipcMain, shell, session, Menu, protocol, net, dialog } = require('electron');
+const { app, BaseWindow, BrowserWindow, WebContentsView, ipcMain, shell, session, Menu, protocol, net, dialog, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -193,6 +193,20 @@ function loadPrefs() {
   let saved = {};
   try { saved = JSON.parse(fs.readFileSync(PREFS_FILE, 'utf8')); } catch (e) { return { ...DEFAULT_PREFS }; }
   const out = { ...DEFAULT_PREFS, ...saved };
+  // Decrypt the AI key back into memory; it only ever exists encrypted on disk.
+  out.aiKey = '';
+  if (saved.aiKeyEnc) {
+    try {
+      if (safeStorage.isEncryptionAvailable()) {
+        out.aiKey = safeStorage.decryptString(Buffer.from(saved.aiKeyEnc, 'base64'));
+      }
+    } catch (e) { out.aiKey = ''; }
+  } else if (saved.aiKey) {
+    // Written by an older build in the clear — keep it working, and the next
+    // save moves it into the encrypted field.
+    out.aiKey = saved.aiKey;
+  }
+  delete out.aiKeyEnc;
   // A flat spread replaces these wholesale, so a tool added after someone's
   // prefs were written would never appear for them. Merge the nested objects
   // key by key, with anything they have chosen winning.
@@ -201,8 +215,26 @@ function loadPrefs() {
   });
   return out;
 }
+// An API key is a credential, and prefs.json is a plain file anything on the
+// machine can read. Encrypt it at rest with the same OS keychain the login
+// vault uses, and never write the plaintext to disk.
 function savePrefs(p) {
-  try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(PREFS_FILE, JSON.stringify(p, null, 2)); } catch (e) {}
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    const onDisk = { ...p };
+    const key = String(onDisk.aiKey || '');
+    delete onDisk.aiKey;
+    delete onDisk.aiKeyEnc;
+    if (key) {
+      if (safeStorage.isEncryptionAvailable()) {
+        onDisk.aiKeyEnc = safeStorage.encryptString(key).toString('base64');
+      } else {
+        // Rather than silently store it in the clear, drop it and say so.
+        console.error('[redlynx] no OS encryption: the AI key was not written to disk');
+      }
+    }
+    fs.writeFileSync(PREFS_FILE, JSON.stringify(onDisk, null, 2));
+  } catch (e) {}
 }
 let prefs = loadPrefs();
 

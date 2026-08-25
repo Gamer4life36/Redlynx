@@ -1,68 +1,91 @@
 REDLYNX — a free, standalone browser
 
+Free, and staying free. No account, no subscription, no cloud, no company.
+
 
 WHY WINDOWS WARNED YOU
 
-This installer is not signed, and that is deliberate.
+This installer is not signed, and that is a deliberate choice.
 
 A code-signing certificate costs a few hundred dollars a year, and nobody
 reads your code for it. It proves who wrote the software — not that the
 software is safe. Signed malware exists. Unsigned honest software gets a
-scary warning. I am not paying for that on free software.
+scary warning. Paying for that on free software is not happening.
 
 "Windows protected your PC" means "we do not know who made this". It does
-not mean anything was found wrong with it.
+not mean anything was found wrong with it. Click More info, then Run anyway.
 
 
-WHAT THIS BROWSER DOES NOT DO
+WHAT IT DOES
 
-  * No data farming. Your history, searches, bookmarks and downloads are
-    files on this machine and nowhere else.
+  Blocks ads and trackers, using the same public filter lists uBlock Origin
+  uses, including video ads on the large sites.
 
-  * No telemetry, no analytics, no crash reporting, no identifiers.
+  Downloads media — video, audio and image galleries — with yt-dlp,
+  gallery-dl and ffmpeg bundled in. Nothing to install, no website to paste
+  a link into.
 
-  * No account, and no Redlynx server — there is nothing to send anything to.
+  Browses .onion sites. The Tor daemon ships inside; one button in the
+  Anonymity panel starts it.
 
-  * No backdoor. The source is readable and every outbound connection the
-    browser can make is listed in the README.
+  Searches eleven independent indexes at once, including archives and
+  crawlers that hold pages ordinary search will not show you.
 
-  * No updater. This is a one-time build. It will not phone home and it
-    will not change under you.
-
-Left idle, it makes no network requests at all. In normal use there is one
-background connection: ad-blocking filter lists refresh from their
-publishers — the same public files every ad blocker downloads, carrying
-nothing about you. Settings has a button if you would rather do it by hand.
+  Reader mode, tab suspending, encrypted DNS, per-site permissions, and an
+  address bar that corrects typos without changing what you typed.
 
 
-ABOUT THE ENGINE
+WHERE YOUR DATA LIVES
 
-Redlynx renders pages with Chromium, the open-source engine behind Chrome,
-Edge, Brave, Opera and Vivaldi. That is not the same thing as Chrome:
-Google's layer — sync, account integration, Safe Browsing callbacks, usage
-statistics — is not part of the open engine and is not in this build.
+On this machine, in one folder, in ordinary files:
 
-Everything above the engine is Redlynx's own: tabs, blocking, downloads,
-Tor, search, reader mode. Chromium draws the page. It decides nothing about
-how this browser behaves.
+  %APPDATA%\Redlynx\redlynx
 
-Chromium's sandbox and site isolation are the most heavily tested defences
-in any browser, and Redlynx inherits them.
+  History, bookmarks and settings are plain files. Readable by you, and by
+  anything else running as you — same as every browser.
 
+  Saved logins are encrypted with Windows DPAPI, tied to your Windows
+  account. Another account on the same PC cannot read them. If encryption
+  is unavailable, Redlynx refuses to save the login rather than writing it
+  in the clear, and tells you so.
 
-WHAT IT CANNOT PROMISE
+  An AI API key, if you add one, is encrypted the same way.
 
-No software can promise it is unhackable, and anyone claiming otherwise is
-selling something.
-
-Chromium has security flaws found and fixed regularly. Because this build
-carries no updater, those fixes arrive only when it is rebuilt. That is the
-honest price of a standalone, no-server, no-phone-home browser: nothing is
-watching you, and nothing is patching you either.
+Nothing syncs. There is no cloud, no account and no Redlynx server to sync
+to. Delete that folder and everything Redlynx knows about you is gone.
 
 
-WHAT IS INCLUDED
+WHAT IT CANNOT DO
 
-Ad and tracker blocking, a media downloader (yt-dlp, gallery-dl, ffmpeg),
-the Tor daemon for .onion browsing, deep search across eleven independent
-indexes, and a reader mode. All bundled, all offline, nothing to sign up for.
+  It cannot promise to be unhackable. No software can, and anyone claiming
+  otherwise is selling something.
+
+  It does not update itself. This is a one-time build with no updater in it.
+  Pages are drawn by Chromium, which has security flaws found and fixed
+  regularly, and those fixes only arrive in a new build. Settings will tell
+  you how far behind the engine has drifted, whenever you ask it.
+
+  It cannot protect you from yourself. Blocking ads is not the same as
+  blocking malware, and Tor hides where you are, not what you hand over.
+
+  It cannot hide you from a site you log into. Signing in identifies you no
+  matter which browser you used.
+
+  It has been tested by one person on Windows. Expect rough edges nobody
+  has hit yet.
+
+
+WHAT IT NEVER DOES
+
+  No telemetry, no analytics, no crash reports, no identifiers.
+  No accounts, no sync, no cloud.
+  No update check, no phone-home, no server that belongs to Redlynx.
+  No selling anything, because there is nothing collected to sell.
+
+Left sitting idle, this browser makes no network requests at all. In normal
+use, one background connection exists: ad-blocking filter lists refresh from
+their publishers — the same public files every ad blocker downloads, carrying
+nothing about you. There is a button in Settings to do it by hand instead.
+
+Everything else happens only when you ask: your searches go to the engine you
+chose, downloads to the site you are downloading from, and nowhere else.

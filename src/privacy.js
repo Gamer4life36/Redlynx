@@ -53,11 +53,19 @@ function loadVault() {
   } catch (e) { return { entries: [], never: [] }; }
 }
 function saveVault(v) {
+  // Refuse rather than downgrade. Writing passwords in the clear because the
+  // OS keychain was unavailable is exactly the silent failure a password store
+  // must never have — the user believes they are saved safely either way.
+  if (!safeStorage.isEncryptionAvailable()) {
+    console.error('[redlynx] refusing to save logins: OS encryption is unavailable');
+    return { ok: false, error: 'This system has no encryption available, so logins were not saved.' };
+  }
   try {
-    const json = JSON.stringify(v);
-    const out = safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(json) : Buffer.from(json, 'utf8');
-    fs.writeFileSync(VAULT_FILE, out);
-  } catch (e) {}
+    fs.writeFileSync(VAULT_FILE, safeStorage.encryptString(JSON.stringify(v)));
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e.message || e) };
+  }
 }
 
 function loadPerms() {
@@ -164,7 +172,10 @@ function install(ses, prefsGetter, dataDir, ui) {
           username: rec.data.username || '', value: rec.data.value || '',
           at: Date.now(),
         });
-        saveVault(v);
+        const r = saveVault(v);
+        // Say so out loud. Someone who pressed Save and saw nothing would
+        // reasonably assume it worked.
+        if (!r.ok) sendUI('toast', { text: r.error || 'Could not save that login.', kind: 'err' });
       } else if (answer === 'never') {
         neverSites.add(rec.data.host);
         v.never = [...neverSites];
