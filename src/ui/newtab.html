@@ -52,6 +52,14 @@
     }
     .tile:hover .del,.tile .del:focus{opacity:1}
     .tile .del:hover{background:var(--accent);color:#fff}
+    /* Sits under the search box: an offer, never a replacement. Enter still
+       runs exactly what was typed. */
+    .didyou{margin-top:10px;font-size:12.5px;color:var(--mut);min-height:18px;opacity:0;transition:opacity .12s}
+    .didyou.show{opacity:1}
+    .didyou button{
+      background:none;border:0;color:var(--accent);cursor:pointer;font:inherit;
+      font-weight:600;text-decoration:underline;padding:0 3px;
+    }
     .undo{
       margin-top:14px;font-size:12px;color:var(--mut);opacity:0;transition:opacity .15s;
     }
@@ -78,6 +86,7 @@
       <span class="ic">🔎</span>
       <input id="q" placeholder="Search the web, or type an address" autocomplete="off" spellcheck="false" autofocus>
     </form>
+    <div class="didyou" id="didyou" aria-live="polite"></div>
     <div class="tiles" id="tiles"></div>
     <div class="undo" id="undo" aria-live="polite"></div>
   </div>
@@ -120,6 +129,45 @@
     };
 
     var undoTimer = null;
+    var fixTimer = null;
+    var lastFix = null;
+
+    // Corrections are looked up as you type, but not on every keystroke.
+    function watchTypos() {
+      var box = document.getElementById('q');
+      var line = document.getElementById('didyou');
+      box.addEventListener('input', function () {
+        clearTimeout(fixTimer);
+        var v = box.value;
+        if (!v.trim()) { line.classList.remove('show'); line.innerHTML = ''; lastFix = null; return; }
+        fixTimer = setTimeout(async function () {
+          if (!window.__redlynxNewTab || !window.__redlynxNewTab.correct) return;
+          var fix = await window.__redlynxNewTab.correct(v);
+          // The box may have moved on while we were asking.
+          if (box.value !== v) return;
+          lastFix = fix;
+          line.innerHTML = '';
+          if (!fix) { line.classList.remove('show'); return; }
+          line.appendChild(document.createTextNode(fix.isDomain ? 'Did you mean ' : 'Did you mean '));
+          var b = document.createElement('button');
+          b.textContent = fix.text;
+          b.onclick = function () { location.href = fix.url; };
+          line.appendChild(b);
+          line.appendChild(document.createTextNode('?'));
+          line.classList.add('show');
+        }, 260);
+      });
+      // Tab accepts the offer, the way a completion normally works.
+      box.addEventListener('keydown', function (e) {
+        if (e.key === 'Tab' && lastFix) {
+          e.preventDefault();
+          box.value = lastFix.text;
+          line.classList.remove('show');
+          lastFix = null;
+        }
+      });
+    }
+    watchTypos();
 
     function renderTiles(sites) {
       const tiles = document.getElementById('tiles');

@@ -727,7 +727,27 @@ async function main() {
     const { rows } = await ask('recieve');
     expect(rows[0] && rows[0].kind !== 'correct',
       'the correction displaced what the user actually typed');
-    return 'corrects typos, learns from history, leaves real words alone';
+    // The new tab page has its own search box. Wiring only the address bar
+    // left the field most people actually type in with no correction at all,
+    // which is exactly how this was reported.
+    await nav('redlynx://newtab/');
+    await new Promise((r) => setTimeout(r, 2000));
+    const typed = async (v) => page(`new Promise(function(res){
+      var q = document.getElementById('q');
+      q.value = ${JSON.stringify('PLACEHOLDER')}.replace('PLACEHOLDER', ${JSON.stringify(v)});
+      q.dispatchEvent(new Event('input', { bubbles: true }));
+      setTimeout(function(){ res({
+        text: document.getElementById('didyou').innerText,
+        shown: document.getElementById('didyou').classList.contains('show') }); }, 1200);
+    })`);
+
+    const bad = await typed('recieve');
+    expect(/receive/.test(bad.text) && bad.shown,
+      'the new tab search offered nothing for a typo (' + JSON.stringify(bad.text) + ')');
+    const good = await typed('electron');
+    expect(!good.shown, 'the new tab search tried to correct a real word: ' + good.text);
+
+    return 'corrects in the address bar and the new tab search, leaves real words alone';
   });
 
   await check('command palette opens', async () => {

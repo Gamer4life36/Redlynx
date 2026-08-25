@@ -1466,6 +1466,19 @@ function topSites(limit) {
 }
 
 ipcMain.handle('newtab:topSites', () => topSites());
+// The new tab page has its own search box, so it needs the corrector too —
+// wiring it to the address bar alone left the field people actually type in
+// with no correction at all.
+ipcMain.handle('omni:correct', (_e, raw) => {
+  const q = String(raw || '');
+  refreshVocab();
+  try {
+    const fixed = Autocorrect.correct(q);
+    if (!fixed || fixed.toLowerCase() === q.trim().toLowerCase()) return null;
+    const isDomain = /^[\w-]+(\.[\w-]+)+$/.test(fixed) && !/\s/.test(fixed);
+    return { text: fixed, url: isDomain ? 'https://' + fixed : searchUrl(fixed), isDomain };
+  } catch (e) { return null; }
+});
 // The settings page runs in a tab, so panel buttons have to ask the chrome.
 ipcMain.handle('ui:openPanel', (_e, id) => { sendUI('open-panel', { id: String(id || '') }); return true; });
 ipcMain.handle('newtab:hide', (_e, host) => {

@@ -349,6 +349,7 @@ if (location.protocol === 'redlynx:' && location.hostname === 'settings') {
 
 if (location.protocol === 'redlynx:' && location.hostname === 'newtab') {
   contextBridge.exposeInMainWorld('__redlynxNewTab', {
+    correct: (q) => ipcRenderer.invoke('omni:correct', String(q || '')),
     hide: (host) => ipcRenderer.invoke('newtab:hide', String(host || '')),
     restore: (host) => ipcRenderer.invoke('newtab:restore', String(host || '')),
   });
