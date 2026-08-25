@@ -125,7 +125,7 @@ async function build(dataUrl, sizes) {
   }
   const cw = maxX - minX + 1, chh = maxY - minY + 1;
   const side = Math.max(cw, chh);
-  const pad = Math.round(side * 0.04);
+  const pad = Math.round(side * 0.005);
   const box = side + pad * 2;
 
   const sq = document.createElement('canvas');
@@ -151,7 +151,7 @@ async function build(dataUrl, sizes) {
     // at the small sizes is what keeps the eyes and the red disc distinct
     // rather than blending into grey.
     if (s <= 32) tctx.filter = s <= 16 ? 'contrast(1.45) saturate(1.5)' : 'contrast(1.22) saturate(1.28)';
-    const zoom = s <= 16 ? 0.55 : (s <= 24 ? 0.72 : (s <= 32 ? 0.88 : 1));
+    const zoom = s <= 16 ? 0.78 : (s <= 24 ? 0.88 : (s <= 32 ? 0.96 : 1));
     if (zoom < 1) {
       const keep = Math.round(box * zoom);
       const off = Math.round((box - keep) / 2);
