@@ -848,6 +848,10 @@ function createWindow() {
     width: 1440, height: 900, minWidth: 900, minHeight: 600,
     backgroundColor: '#0f1115', title: 'Redlynx',
     autoHideMenuBar: true,
+    // Packaged builds take the icon from the executable, but running from
+    // source there is nothing to take it from — without this the dev window
+    // wears Electron's default icon.
+    icon: path.join(__dirname, '..', 'branding', 'redlynx.ico'),
   });
   chrome = new WebContentsView({
     webPreferences: {

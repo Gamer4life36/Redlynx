@@ -77,8 +77,14 @@ Function RedlynxDarkNoticePage
   IntOp $9 $9 + 8
   ; SWP_NOMOVE|SWP_NOZORDER
   System::Call 'user32::SetWindowPos(p $1, p 0, i 0, i 0, i r8, i r9, i 6)'
-  ; Repaint, or the area the old smaller label occupied keeps its pixels.
-  System::Call 'user32::InvalidateRect(p $HWNDPARENT, p 0, i 1)'
+  ; Repaint properly. InvalidateRect only marks the area dirty; without an
+  ; erase the window keeps whatever pixels were already there, which on a
+  ; freshly shown dialog is whatever was behind it - the desktop. That is what
+  ; shows as a stray band of wallpaper colour along the bottom.
+  ; RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN|RDW_UPDATENOW
+  System::Call 'user32::RedrawWindow(p $HWNDPARENT, p 0, p 0, i 0x0185)'
+  FindWindow $3 "#32770" "" $HWNDPARENT
+  System::Call 'user32::RedrawWindow(p $3, p 0, p 0, i 0x0185)'
   ; The branding line exists twice, as control 1028 and control 1256, sitting
   ; on top of each other with the same text. Restyling one leaves the other
   ; showing through in the old size, which reads as a doubled, blurry label.

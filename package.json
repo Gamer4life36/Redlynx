@@ -12,7 +12,8 @@
     "engine:check": "node scripts/engine-check.js",
     "engine:refresh": "npm i -D electron@latest && npm test && npm run dist",
     "dist:publish": "electron-builder --win --publish always",
-    "notice": "node scripts/make-notice-rtf.js"
+    "notice": "node scripts/make-notice-rtf.js",
+    "icon": "electron scripts/make-icon.js branding/redlynx-source.png branding/redlynx"
   },
   "author": "",
   "license": "MIT",
@@ -55,7 +56,7 @@
       }
     ],
     "win": {
-      "icon": "branding/icon-3-redline-eye.ico",
+      "icon": "branding/redlynx.ico",
       "target": [
         "nsis",
         "portable"
@@ -70,9 +71,9 @@
       "shortcutName": "Redlynx",
       "license": "build/notice.rtf",
       "include": "build/installer.nsh",
-      "installerIcon": "branding/icon-3-redline-eye.ico",
-      "uninstallerIcon": "branding/icon-3-redline-eye.ico",
-      "installerHeaderIcon": "branding/icon-3-redline-eye.ico",
+      "installerIcon": "branding/redlynx.ico",
+      "uninstallerIcon": "branding/redlynx.ico",
+      "installerHeaderIcon": "branding/redlynx.ico",
       "installerHeader": "build/header.bmp",
       "installerSidebar": "build/sidebar.bmp",
       "uninstallerSidebar": "build/sidebar.bmp"
