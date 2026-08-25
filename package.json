@@ -8,7 +8,9 @@
     "dist": "electron-builder --win nsis portable",
     "pack": "electron-builder --win --dir",
     "test": "node test/run.js",
-    "build:signed": "electron-builder --win"
+    "build:signed": "electron-builder --win",
+    "engine:check": "node scripts/engine-check.js",
+    "engine:refresh": "npm i -D electron@latest && npm test && npm run dist"
   },
   "author": "",
   "license": "MIT",
@@ -64,7 +66,8 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "Redlynx"
+      "shortcutName": "Redlynx",
+      "license": "build/notice.txt"
     }
   }
 }

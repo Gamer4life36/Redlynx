@@ -1,0 +1,68 @@
+REDLYNX — a free, standalone browser
+
+
+WHY WINDOWS WARNED YOU
+
+This installer is not signed, and that is deliberate.
+
+A code-signing certificate costs a few hundred dollars a year, and nobody
+reads your code for it. It proves who wrote the software — not that the
+software is safe. Signed malware exists. Unsigned honest software gets a
+scary warning. I am not paying for that on free software.
+
+"Windows protected your PC" means "we do not know who made this". It does
+not mean anything was found wrong with it.
+
+
+WHAT THIS BROWSER DOES NOT DO
+
+  * No data farming. Your history, searches, bookmarks and downloads are
+    files on this machine and nowhere else.
+
+  * No telemetry, no analytics, no crash reporting, no identifiers.
+
+  * No account, and no Redlynx server — there is nothing to send anything to.
+
+  * No backdoor. The source is readable and every outbound connection the
+    browser can make is listed in the README.
+
+  * No updater. This is a one-time build. It will not phone home and it
+    will not change under you.
+
+Left idle, it makes no network requests at all. In normal use there is one
+background connection: ad-blocking filter lists refresh from their
+publishers — the same public files every ad blocker downloads, carrying
+nothing about you. Settings has a button if you would rather do it by hand.
+
+
+ABOUT THE ENGINE
+
+Redlynx renders pages with Chromium, the open-source engine behind Chrome,
+Edge, Brave, Opera and Vivaldi. That is not the same thing as Chrome:
+Google's layer — sync, account integration, Safe Browsing callbacks, usage
+statistics — is not part of the open engine and is not in this build.
+
+Everything above the engine is Redlynx's own: tabs, blocking, downloads,
+Tor, search, reader mode. Chromium draws the page. It decides nothing about
+how this browser behaves.
+
+Chromium's sandbox and site isolation are the most heavily tested defences
+in any browser, and Redlynx inherits them.
+
+
+WHAT IT CANNOT PROMISE
+
+No software can promise it is unhackable, and anyone claiming otherwise is
+selling something.
+
+Chromium has security flaws found and fixed regularly. Because this build
+carries no updater, those fixes arrive only when it is rebuilt. That is the
+honest price of a standalone, no-server, no-phone-home browser: nothing is
+watching you, and nothing is patching you either.
+
+
+WHAT IS INCLUDED
+
+Ad and tracker blocking, a media downloader (yt-dlp, gallery-dl, ffmpeg),
+the Tor daemon for .onion browsing, deep search across eleven independent
+indexes, and a reader mode. All bundled, all offline, nothing to sign up for.

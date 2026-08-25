@@ -327,6 +327,7 @@ if (location.protocol === 'redlynx:' && location.hostname === 'settings') {
     enginesList: call('engines:list'),
     downloadDir: call('dl:dir'),
     enginesReady: call('dl:enginesReady'),
+    engineVersions: call('engine:versions'),
     permList: call('perm:list'),
     permForget: (host, permission) => ipcRenderer.invoke('perm:forget', { host, permission }),
     extList: call('ext:list'),

@@ -81,6 +81,18 @@
         answer. Forget a decision and that site will ask again.</div>
       </div>
             <div class="card">
+<div class="row"><b>Engine</b></div>
+      <div class="hint" id="engineNow">…</div>
+      <div class="row" style="gap:8px">
+        <button class="btn" id="engineCheck">Check how current it is</button>
+      </div>
+      <div class="hint" id="engineVerdict"></div>
+      <div class="hint">This build has no updater and never checks on its own. Chromium cannot be
+        patched in place — a security fix means rebuilding from source, which is
+        <code>npm run engine:refresh</code>. Pressing the button asks two public version
+        services what the newest release is; it sends nothing about you and downloads nothing.</div>
+      </div>
+      <div class="card">
 <div class="row"><b>Extensions</b></div>
       <div id="extList" class="mut">None loaded.</div>
       <div class="row" style="gap:8px"><button class="btn" id="extAdd">+ Add extension folder</button></div>
@@ -335,6 +347,30 @@
     });
   }
 
+  async function showEngine() {
+    var v = await api.engineVersions();
+    $('engineNow').textContent = 'Chromium ' + (v.chromium || '?')
+      + ' · Electron ' + (v.electron || '?') + ' · Node ' + (v.node || '?');
+    var out = $('engineVerdict');
+    if (v.error) { out.textContent = v.error; out.style.color = 'var(--warn)'; return; }
+    if (v.latestChrome) {
+      out.style.color = '';
+      var parts = ['Newest Chrome is ' + v.latestChrome + '.'];
+      if (v.latestElectron) parts.push('Newest Electron is ' + v.latestElectron + '.');
+      if (v.behind === 0) parts.push('This build is current.');
+      else if (v.behind === 1) parts.push('One Electron release behind — normal, since Electron trails Chrome.');
+      else if (v.behind > 1) {
+        parts.push(v.behind + ' releases behind: security fixes from that gap are not in this build.');
+        out.style.color = 'var(--warn)';
+      }
+      out.textContent = parts.join(' ');
+    }
+  }
+  $('engineCheck').onclick = function () {
+    $('engineVerdict').textContent = 'Checking…';
+    showEngine();
+  };
+
   async function showZoom() {
     $('zoomVal').textContent = (await api.zoomGet()) + '%';
   }
@@ -377,6 +413,8 @@
       ? 'Download engines ready: yt-dlp, gallery-dl and ffmpeg. Tor is bundled too.'
       : 'Download engines missing — put yt-dlp.exe, gallery-dl.exe and ffmpeg.exe in an "engines" folder next to the app.';
 
+    $('engineNow').textContent = 'Chromium ' + (navigator.userAgent.match(/Chrome\/([\d.]+)/) || [,'?'])[1]
+      + ' · Electron ' + (navigator.userAgent.match(/Electron\/([\d.]+)/) || [,'?'])[1];
     showZoom();
     refreshPerms();
     refreshExtensions();

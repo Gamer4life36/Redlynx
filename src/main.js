@@ -1628,6 +1628,38 @@ ipcMain.handle('find:stop', (_e, keep) => {
   if (t) t.view.webContents.stopFindInPage(keep ? 'keepSelection' : 'clearSelection');
 });
 
+// How current is the engine? Asked only when the user presses the button:
+// no background check, nothing about them in the request, and nothing is
+// downloaded or installed. Chromium cannot be patched in place — a fix means
+// rebuilding — so the honest thing to offer is knowing where you stand.
+ipcMain.handle('engine:versions', async () => {
+  const mine = {
+    chromium: process.versions.chrome || '',
+    electron: process.versions.electron || '',
+    node: process.versions.node || '',
+  };
+  const get = async (url) => {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), 8000);
+    try {
+      const r = await fetch(url, { signal: c.signal, headers: { 'User-Agent': 'redlynx' } });
+      return await r.json();
+    } finally { clearTimeout(t); }
+  };
+  try {
+    const [el, ch] = await Promise.all([
+      get('https://registry.npmjs.org/electron/latest').catch(() => null),
+      get('https://versionhistory.googleapis.com/v1/chrome/platforms/win64/channels/stable/versions').catch(() => null),
+    ]);
+    const latestElectron = el && el.version ? el.version : '';
+    const latestChrome = ch && ch.versions && ch.versions[0] ? ch.versions[0].version : '';
+    const maj = (v) => Number(String(v).split('.')[0] || 0);
+    const behind = latestElectron ? maj(latestElectron) - maj(mine.electron) : null;
+    return { ...mine, latestElectron, latestChrome, behind, checkedAt: Date.now() };
+  } catch (e) {
+    return { ...mine, error: 'Could not reach the version services.' };
+  }
+});
 ipcMain.handle('engines:list', () => Object.entries(ENGINES).map(([id, e]) => ({ id, name: e.name })));
 ipcMain.handle('zoom:set', (_e, dir) => {
   const t = tabs.get(activeId);
