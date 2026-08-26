@@ -3,6 +3,26 @@
 A Chromium browser with the things Chrome will not give you, built in rather
 than bolted on.
 
+## Download
+
+**[Get the latest release →](https://github.com/Gamer4life36/Redlynx/releases/latest)**
+
+| | |
+|---|---|
+| **Redlynx-Setup-*.exe** | Installer. Per-user, no admin needed. |
+| **Redlynx-Portable-*.exe** | One file, runs without installing. |
+
+Both are self-contained — the ad blocker, yt-dlp, gallery-dl, ffmpeg and the
+Tor daemon are all inside. Nothing else to set up.
+
+The binaries live on the releases page rather than in the repository because
+they are around 195MB each and git rejects anything over 100MB.
+
+> Windows will say the publisher is unrecognised, because these builds are
+> **unsigned on purpose** — a certificate proves who wrote the software, not
+> that it is safe, and this is free software. Click **More info → Run anyway**.
+> The installer's first page explains it in full.
+
 ## What it does
 
 **Blocks ads properly.** EasyList, EasyPrivacy, uBlock Origin's own filters and
