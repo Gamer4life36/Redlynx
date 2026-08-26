@@ -20,9 +20,12 @@
 ; is consumed by whichever page macro comes next, and here that turned out to
 ; be the *uninstaller's* welcome page, which failed the build outright.
 ; Match the browser's own theme: --bg 0f1115, --txt e6e9ef, --accent e63946.
-; MUI can colour the pages it draws itself and the notice box; the grey frame
-; around them belongs to the Windows dialog resource and is not ours to paint
-; without shipping a custom UI, which is not worth the weight.
+;
+; These defines colour every page MUI draws, and the SetCtlColors call below
+; on $HWNDPARENT persists for the life of the window - so the folder-choice
+; and progress pages come out dark too, not just the notice. I had assumed
+; the frame belonged to the Windows dialog resource and would need a custom
+; UI binary to paint; it does not.
 !define MUI_BGCOLOR "0f1115"
 !define MUI_TEXTCOLOR "e6e9ef"
 !define MUI_LICENSEPAGE_BGCOLOR "0f1115"
