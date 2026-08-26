@@ -16,11 +16,13 @@ const path = require('path');
 const SRC = path.join(__dirname, '..', 'build', 'notice.txt');
 const OUT = path.join(__dirname, '..', 'build', 'notice.rtf');
 
-// Browser theme: --txt, --accent, --mut.
+// The notice sits on the browser's light ground (--bg #e9edf2), so the body is
+// dark and the accent is deepened — #e63946 is pitched for a dark background
+// and goes weak against light grey.
 const COLOURS = '{\\colortbl;'
-  + '\\red230\\green233\\blue239;'   // 1 body      #e6e9ef
-  + '\\red230\\green57\\blue70;'     // 2 heading   #e63946
-  + '\\red139\\green147\\blue163;'   // 3 muted     #8b93a3
+  + '\\red22\\green27\\blue34;'      // 1 body      #161b22
+  + '\\red176\\green28\\blue40;'     // 2 heading   deepened accent
+  + '\\red93\\green107\\blue122;'    // 3 muted     #5d6b7a
   + '}';
 
 const escape = (s) => s
