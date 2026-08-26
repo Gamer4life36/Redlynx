@@ -98,9 +98,18 @@ const form = (q) => encodeURIComponent(q).replace(/%20/g, '+');
 // containing no results. Reported as "0 hits" that is indistinguishable from
 // a genuinely empty search, so name it for what it is.
 function refuseCheck(html, name) {
-  const refusal = /unusual traffic|detected an anomaly|are you a robot|\/sorry\/|captcha/i.test(html)
+  const captcha = /unusual traffic|detected an anomaly|are you a robot|\/sorry\/|captcha/i.test(html)
     || /made by a human|following challenge|bots use|verify you are human/i.test(html);
-  if (refusal) throw new Error(name + ' is asking for a CAPTCHA (rate-limited)');
+  if (captcha) throw new Error(name + ' is asking for a CAPTCHA (rate-limited)');
+
+  // Not every refusal is a CAPTCHA. Marginalia answers a burst of queries with
+  // a one-kilobyte "please wait" page — short enough that the layout guard
+  // rightly stays quiet, so without this it read as a search that found
+  // nothing at all.
+  const backoff = /barraged by queries|please wait for|too many requests|rate limit|slow down/i.test(html);
+  if (backoff && html.length < 4000) {
+    throw new Error(name + ' asked us to wait — it is busy (rate-limited)');
+  }
   return html;
 }
 
