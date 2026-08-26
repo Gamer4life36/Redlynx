@@ -1349,8 +1349,9 @@ async function runDeep() {
     return;
   }
 
-  const ok = res.sources.filter((s) => s.ok);
+  const ok = res.sources.filter((s) => s.ok && !s.skipped);
   const bad = res.sources.filter((s) => !s.ok);
+  const skipped = res.sources.filter((s) => s.skipped);
   status.replaceChildren();
   const line = document.createElement('div');
   line.textContent = res.results.length + ' results from ' + ok.length + ' of '
@@ -1362,6 +1363,14 @@ async function runDeep() {
     warn.style.color = 'var(--warn)';
     warn.textContent = 'no answer: ' + bad.map((s) => s.name + ' (' + (s.error || 'failed') + ')').join(', ');
     status.appendChild(warn);
+  }
+  // A source that does not apply to this query is not a failure, and should
+  // not sit in the same line as one.
+  if (skipped.length) {
+    const note = document.createElement('div');
+    note.textContent = 'not used here: '
+      + skipped.map((s) => s.name + ' (' + (s.note || 'n/a') + ')').join(', ');
+    status.appendChild(note);
   }
 
   if (!res.results.length) {

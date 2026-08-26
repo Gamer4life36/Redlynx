@@ -7,7 +7,7 @@
  *   • power tab management (suspend, session restore, search)
  *   • privacy hardening, and NOTHING sensitive saved without asking first
  */
-const { app, BaseWindow, BrowserWindow, WebContentsView, ipcMain, shell, session, Menu, protocol, net, dialog, safeStorage } = require('electron');
+const { app, BaseWindow, WebContentsView, ipcMain, shell, session, Menu, protocol, net, dialog, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -1238,31 +1238,7 @@ app.whenReady().then(async () => {
   fs.mkdirSync(BG_DIR, { recursive: true });
   serveInternal(ses);
   History.install(DATA_DIR);
-  Deep.install({
-    ipcMain,
-    // Some indexes stopped serving results to a plain HTTP fetch. We are a
-    // browser, so render the page offscreen and read the DOM instead. It runs
-    // in the normal session, which means it goes through Tor when Tor is on.
-    render: async (url, extractJs, opts) => {
-      const off = new BrowserWindow({
-        show: false,
-        webPreferences: {
-          partition: 'persist:main',
-          sandbox: true,
-          contextIsolation: true,
-          nodeIntegration: false,
-          images: false,
-        },
-      });
-      try {
-        await off.loadURL(url);
-        await new Promise((r) => setTimeout(r, (opts && opts.settle) || 3000));
-        return await off.webContents.executeJavaScript(extractJs, true);
-      } finally {
-        try { off.destroy(); } catch (e) {}
-      }
-    },
-  });
+  Deep.install({ ipcMain });
   Anon.install(() => prefs);
   Updater.install((ch, payload) => sendUI(ch, payload));
   // One check, half a minute after launch so it never delays startup. It asks

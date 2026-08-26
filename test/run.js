@@ -576,6 +576,12 @@ async function main() {
     // A source that is being rate-limited must say so rather than look empty.
     for (const b of blocked) expect(b.error, b.name + ' failed without saying why');
 
+    // Not asserting that every source returns something: against live sites,
+    // zero is sometimes the honest answer, and a suite that fails when Stack
+    // Exchange has nothing to say about photosynthesis is a suite people
+    // learn to ignore. Detecting a scraper that has silently stopped matching
+    // is what npm run sources:check is for.
+
     return r.results.length + ' results, ' + ok.length + '/' + r.sources.length
       + ' sources, ' + corroborated + ' corroborated'
       + (blocked.length ? ' (' + blocked.map((s) => s.name).join(', ') + ' rate-limited)' : '');

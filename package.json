@@ -13,7 +13,8 @@
     "engine:refresh": "npm i -D electron@latest && npm test && npm run dist",
     "dist:publish": "electron-builder --win --publish always",
     "notice": "node scripts/make-notice-rtf.js",
-    "icon": "electron scripts/make-icon.js branding/redlynx-source.png branding/redlynx"
+    "icon": "electron scripts/make-icon.js branding/redlynx-source.png branding/redlynx",
+    "sources:check": "node scripts/check-sources.js"
   },
   "author": "",
   "license": "MIT",

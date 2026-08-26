@@ -11,15 +11,18 @@
  * Every source runs in parallel with its own timeout, and one failing source
  * never takes the search down — each reports its own status so the UI can say
  * plainly what answered and what did not.
+ *
+ * There is no Tor index here. Ahmia was the obvious candidate and its search
+ * backend serves a page shell with no results at all — checked repeatedly over
+ * hours, through Tor and direct, in a real browser with JavaScript running. A
+ * picker entry that never works is a promise the product cannot keep, so it is
+ * out until there is an onion index that answers. Tor itself still works; you
+ * just need the address.
  */
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
   + '(KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
 
 const PER_SOURCE_TIMEOUT = 12000;
-
-// install() can hand us a way to render a page rather than merely fetch it.
-// Sources that need JavaScript stay switched off until it exists.
-let renderPage = null;
 
 function decode(s) {
   if (!s) return '';
@@ -33,24 +36,57 @@ function decode(s) {
 }
 
 async function get(url, opts) {
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), (opts && opts.timeout) || PER_SOURCE_TIMEOUT);
-  try {
-    const res = await fetch(url, {
-      signal: ctl.signal,
-      redirect: 'follow',
-      headers: Object.assign({
-        'User-Agent': UA,
-        'Accept-Language': 'en-US,en;q=0.9',
-      }, (opts && opts.headers) || {}),
-    });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    if (opts && opts.json) return await res.json();
-    const text = await res.text();
-    return (opts && opts.name) ? refuseCheck(text, opts.name) : text;
-  } finally {
-    clearTimeout(timer);
+  const o = opts || {};
+  const attempts = (o.retries || 0) + 1;
+  let last = null;
+
+  for (let n = 0; n < attempts; n++) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), o.timeout || PER_SOURCE_TIMEOUT);
+    try {
+      const res = await fetch(url, {
+        signal: ctl.signal,
+        redirect: 'follow',
+        headers: Object.assign({
+          'User-Agent': UA,
+          'Accept-Language': 'en-US,en;q=0.9',
+        }, o.headers || {}),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      if (o.json) return await res.json();
+      const text = await res.text();
+      return o.name ? refuseCheck(text, o.name) : text;
+    } catch (e) {
+      last = e;
+      // A rate-limit is a decision, not a hiccup: retrying earns another one.
+      if (/CAPTCHA|rate-limit/i.test(String(e && e.message))) break;
+      if (n < attempts - 1) await new Promise((r) => setTimeout(r, 400 * (n + 1)));
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  throw last || new Error('request failed');
+}
+
+/**
+ * Tell a broken parser apart from an empty result.
+ *
+ * A scraper whose selectors stop matching returns zero hits, which looks
+ * exactly like a search that genuinely found nothing — so a site redesign
+ * would quietly remove a source and nobody would know for months. If the page
+ * clearly has content and we extracted none of it, say so.
+ */
+function expectResults(html, out, name) {
+  if (out.length) return out;
+  const body = String(html || '');
+  const links = (body.match(/<a\s/gi) || []).length;
+  // A real results page is substantial and full of links. A genuinely empty
+  // search is usually short, or says so.
+  const looksEmpty = /no results|nothing found|did not match|0 results/i.test(body);
+  if (body.length > 6000 && links > 25 && !looksEmpty) {
+    throw new Error(name + ' returned a page we could not parse — its layout has probably changed');
+  }
+  return out;
 }
 
 // Form-style search endpoints want '+' for spaces. Mojeek in particular
@@ -96,7 +132,7 @@ const SOURCES = [
         const desc = (/<p class="description">([\s\S]*?)<\/p>/.exec(s) || [])[1];
         if (url) out.push(hit(url, title || url, desc));
       }
-      return out;
+      return expectResults(html, out, 'Marginalia');
     },
   },
   {
@@ -115,7 +151,7 @@ const SOURCES = [
         const snip = (/<p class="s">([\s\S]*?)<\/p>/.exec(s) || [])[1];
         out.push(hit(a[1], a[2], snip));
       }
-      return out;
+      return expectResults(html, out, 'Mojeek');
     },
   },
   {
@@ -135,7 +171,7 @@ const SOURCES = [
         if (u.startsWith('//')) u = 'https:' + u;
         out.push(hit(u, m[2]));
       }
-      return out;
+      return expectResults(html, out, 'DuckDuckGo');
     },
   },
   {
@@ -147,18 +183,42 @@ const SOURCES = [
       // query looks like a domain, and by title otherwise.
       const asDomain = /^[\w-]+(\.[\w-]+)+$/.test(q.trim());
       if (asDomain) {
-        const rows = await get(
-          'https://web.archive.org/cdx/search/cdx?url=' + encodeURIComponent(q.trim())
-          + '*&output=json&limit=25&collapse=urlkey&filter=statuscode:200', { json: true });
-        if (!Array.isArray(rows) || rows.length < 2) return [];
-        return rows.slice(1, 25).map((r) => {
-          const [, ts, original] = r;
-          return hit('https://web.archive.org/web/' + ts + '/' + original, original,
-            'Archived ' + ts.slice(0, 4) + '-' + ts.slice(4, 6) + '-' + ts.slice(6, 8));
-        });
+        const domain = q.trim();
+        try {
+          // The CDX index is the good answer — a list of everything archived
+          // under a domain — but it is frequently overloaded and simply hangs.
+          const rows = await get(
+            'https://web.archive.org/cdx/search/cdx?url=' + encodeURIComponent(domain)
+            + '*&output=json&limit=25&collapse=urlkey&filter=statuscode:200',
+            // Short leash: when CDX is healthy it answers in a few seconds,
+            // and when it is not, waiting longer only delays the fallback.
+            { json: true, timeout: 9000 });
+          if (Array.isArray(rows) && rows.length > 1) {
+            return rows.slice(1, 25).map((r) => {
+              const [, ts, original] = r;
+              return hit('https://web.archive.org/web/' + ts + '/' + original, original,
+                'Archived ' + ts.slice(0, 4) + '-' + ts.slice(4, 6) + '-' + ts.slice(6, 8));
+            });
+          }
+        } catch (e) { /* fall through to the endpoint that stays up */ }
+
+        // The availability API answers in well under a second and never seems
+        // to be down. It only knows the closest snapshot, so this is a worse
+        // answer than CDX gives — but one archived page beats none, and the
+        // alternative is the source contributing nothing whenever the index
+        // is busy.
+        const avail = await get('https://archive.org/wayback/available?url='
+          + encodeURIComponent(domain), { json: true, timeout: 12000, retries: 1 });
+        const snap = avail && avail.archived_snapshots && avail.archived_snapshots.closest;
+        if (!snap || !snap.url) return [];
+        const ts = String(snap.timestamp || '');
+        return [hit(snap.url.replace(/^http:/, 'https:'), domain,
+          'Closest archived copy' + (ts ? ' · ' + ts.slice(0, 4) + '-' + ts.slice(4, 6) + '-' + ts.slice(6, 8) : '')
+          + ' · the full index was unavailable')];
       }
       const data = await get('https://archive.org/advancedsearch.php?q=' + encodeURIComponent(q)
-        + '&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=description&rows=20&output=json', { json: true });
+        + '&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=description&rows=20&output=json',
+        { json: true, timeout: 20000, retries: 2 });
       const docs = (data && data.response && data.response.docs) || [];
       return docs.map((d) => hit('https://archive.org/details/' + d.identifier, d.title || d.identifier,
         Array.isArray(d.description) ? d.description[0] : d.description));
@@ -168,6 +228,11 @@ const SOURCES = [
     id: 'commoncrawl',
     name: 'Common Crawl',
     why: 'A raw crawl of the web with no ranking layer at all. Pages here were fetched whether or not any engine chose to index them.',
+    // Common Crawl is indexed by URL, not by text, so it can only answer when
+    // the query is a domain. Saying that is better than returning nothing and
+    // being mistaken for a source that has broken.
+    applies: (q) => /^[\w-]+(\.[\w-]+)+$/.test(q.trim()),
+    appliesNote: 'searches by domain — try a hostname like example.com',
     async run(q) {
       const asDomain = /^[\w-]+(\.[\w-]+)+$/.test(q.trim());
       if (!asDomain) return [];
@@ -209,8 +274,9 @@ const SOURCES = [
     name: 'arXiv',
     why: 'Preprints, often months or years before anything is published or indexed elsewhere.',
     async run(q) {
+      // arXiv's API regularly takes longer than a browser would wait.
       const xml = await get('http://export.arxiv.org/api/query?search_query=all:'
-        + encodeURIComponent(q) + '&max_results=15');
+        + encodeURIComponent(q) + '&max_results=15', { timeout: 25000, retries: 1 });
       const out = [];
       const re = /<entry>([\s\S]*?)<\/entry>/g;
       let m;
@@ -263,48 +329,6 @@ const SOURCES = [
     },
   },
   {
-    id: 'ahmia',
-    name: 'Ahmia (Tor)',
-    needsTor: true,
-    why: 'Indexes Tor hidden services, which no ordinary engine crawls. Results are .onion addresses and only open while Tor is on. Ahmia excludes abuse material by policy.',
-    async run(q) {
-      if (!renderPage) throw new Error('needs the offscreen renderer (run inside Redlynx)');
-      // Ahmia dropped its no-JavaScript version, so a plain fetch returns the
-      // landing page and nothing else. Render it and read the results out.
-      const rows = await renderPage('https://ahmia.fi/search/?q=' + form(q), `
-        (function () {
-          var out = [];
-          var seen = {};
-          var links = document.querySelectorAll('a[href]');
-          for (var i = 0; i < links.length && out.length < 20; i++) {
-            var href = links[i].getAttribute('href') || '';
-            var m = /([a-z2-7]{16,56}\.onion)/i.exec(href);
-            if (!m) continue;
-            var onion = m[1];
-            // Ahmia's own hidden service is on every page; it is chrome, not a result.
-            if (/ahmia\.fi/i.test(href) || /^juhanurmihxlp/i.test(onion)) continue;
-            if (seen[onion]) continue;
-            seen[onion] = 1;
-            var row = links[i].closest('li, .result, article, div') || links[i];
-            var title = (links[i].textContent || '').trim() || onion;
-            var text = (row.textContent || '').replace(/\s+/g, ' ').trim();
-            out.push({ onion: onion, href: href, title: title, text: text.slice(0, 240) });
-          }
-          return out;
-        })()
-      `, { settle: 4000 });
-      // Ahmia currently serves its page shell with no results block at all,
-      // for us and for a normal browser alike. That is a dead backend, not an
-      // empty search, and it should not read as "nothing matched".
-      if (!rows || !rows.length) throw new Error('Ahmia returned no results block (its search backend is not answering)');
-      return rows.map((r) => {
-        const url = /^https?:/i.test(r.href) && r.href.indexOf('ahmia.fi/search/redirect') === -1
-          ? r.href : ('http://' + r.onion);
-        return hit(url.indexOf('.onion') !== -1 ? url : 'http://' + r.onion, r.title, r.text, { onion: true });
-      });
-    },
-  },
-  {
     id: 'wikipedia',
     name: 'Wikipedia',
     why: 'Full-text search over article bodies, which finds articles that merely mention the term.',
@@ -347,12 +371,14 @@ async function search(query, opts) {
   const q = String(query || '').trim();
   if (!q) return { query: q, results: [], sources: [] };
   const only = (opts && Array.isArray(opts.sources) && opts.sources.length) ? new Set(opts.sources) : null;
-  // Tor sources are opt-in: their results cannot open unless Tor is running,
-  // so they are never part of a default search.
-  const chosen = SOURCES.filter((s) => (only ? only.has(s.id) : !s.needsTor));
+  const chosen = SOURCES.filter((s) => !only || only.has(s.id));
 
   const settled = await Promise.all(chosen.map(async (s) => {
     const started = Date.now();
+    if (s.applies && !s.applies(q)) {
+      return { id: s.id, name: s.name, ok: true, skipped: true, count: 0, ms: 0,
+               note: s.appliesNote || 'does not apply to this query', hits: [] };
+    }
     try {
       const hits = await s.run(q);
       return { id: s.id, name: s.name, ok: true, count: hits.length, ms: Date.now() - started, hits };
@@ -367,17 +393,17 @@ async function search(query, opts) {
 
   return {
     query: q,
-    sources: settled.map(({ id, name, ok, count, ms, error }) => ({ id, name, ok, count, ms, error })),
+    sources: settled.map(({ id, name, ok, count, ms, error, skipped, note }) =>
+      ({ id, name, ok, count, ms, error, skipped, note })),
     results: merge(settled.filter((r) => r.ok).map((r) => ({ source: r.id, hits: r.hits }))),
   };
 }
 
 function catalogue() {
-  return SOURCES.map((s) => ({ id: s.id, name: s.name, why: s.why, needsTor: !!s.needsTor }));
+  return SOURCES.map((s) => ({ id: s.id, name: s.name, why: s.why }));
 }
 
-function install({ ipcMain, render }) {
-  renderPage = render || null;
+function install({ ipcMain }) {
   ipcMain.handle('deep:search', (_e, payload) => search(payload && payload.query, payload || {}));
   ipcMain.handle('deep:sources', () => catalogue());
 }
