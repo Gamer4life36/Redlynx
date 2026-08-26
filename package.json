@@ -14,7 +14,8 @@
     "dist:publish": "electron-builder --win --publish always",
     "notice": "node scripts/make-notice-rtf.js",
     "icon": "electron scripts/make-icon.js branding/redlynx-source.png branding/redlynx",
-    "sources:check": "node scripts/check-sources.js"
+    "sources:check": "node scripts/check-sources.js",
+    "engines:fetch": "node scripts/fetch-engines.js"
   },
   "author": "",
   "license": "MIT",

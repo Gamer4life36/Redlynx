@@ -65,15 +65,11 @@ jobs:
         continue-on-error: true
         run: npm test
 
-      - name: Download the bundled engines
-        shell: bash
-        run: |
-          mkdir -p engines
-          curl -sL -o engines/yt-dlp.exe \
-            https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe
-          echo "yt-dlp: $(./engines/yt-dlp.exe --version)"
-          # gallery-dl, ffmpeg and Tor are large and change rarely. Commit them
-          # to a release asset or fetch them here if you want them refreshed too.
+      - name: Fetch the bundled engines
+        # yt-dlp, gallery-dl, ffmpeg and Tor. engines/ is not in git, so
+        # without this the build ships a browser whose downloader and Tor
+        # button do nothing.
+        run: npm run engines:fetch
 
       - name: Build
         run: npx electron-builder --win --publish never

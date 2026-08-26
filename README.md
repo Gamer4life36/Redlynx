@@ -46,8 +46,16 @@ Ctrl+K opens a command palette for all of it.
 
 ```bash
 npm install
+npm run engines:fetch
 npm start
 ```
+
+`engines:fetch` pulls yt-dlp, gallery-dl, ffmpeg and the Tor daemon into
+`engines/` — about 250MB, straight from the projects that publish them, and it
+verifies Tor's signature on the way past. They are not in git because binaries
+that size do not belong there, so a fresh clone needs this once. Redlynx runs
+without them; the downloader and the Tor button are simply inert until they
+are there.
 
 ## Building
 
@@ -55,12 +63,23 @@ npm start
 npm run dist
 ```
 
-Produces an NSIS installer and a portable exe in `dist/`. See
-[RELEASING.md](RELEASING.md) for code signing and publishing.
+Produces an NSIS installer and a portable exe in `dist/`.
 
-> **Note:** builds are currently unsigned, so Windows SmartScreen will warn
-> that the publisher is unrecognised. Click **More info → Run anyway**.
-> RELEASING.md covers what signing costs and how to enable it.
+Other things worth knowing:
+
+| | |
+|---|---|
+| `npm test` | the regression suite — real browser, live sites |
+| `npm run sources:check` | are the deep-search indexes still answering? |
+| `npm run engine:check` | how far behind Chrome this build has drifted |
+| `npm run engines:refresh` | pull the newest Electron, test, rebuild |
+| `npm run icon` | rebuild the icon set from `branding/redlynx-source.png` |
+
+> **Builds are unsigned, on purpose.** Windows SmartScreen will say the
+> publisher is unrecognised — click **More info → Run anyway**. A certificate
+> costs a few hundred a year and proves who wrote the software, not that it is
+> safe, and this is free software. [SIGNING.md](SIGNING.md) explains the
+> trade-off and how to sign it anyway if you ever want to.
 
 ## Built with
 
