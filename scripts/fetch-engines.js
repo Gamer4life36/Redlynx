@@ -23,7 +23,43 @@ const ROOT = path.join(__dirname, '..');
 const DIR = path.join(ROOT, 'engines');
 const FORCE = process.argv.includes('--force');
 
-const TOR_VERSION = '15.0.20';
+// Tor deletes old versions from its download server soon after a new one
+// ships, so a pinned version turns into a 404 within weeks (this is what broke
+// the monthly engine refresh). Ask Tor which version is current instead.
+// TOR_VERSION in the environment overrides it, for reproducing an old build.
+const TOR_RELEASE_INFO =
+  'https://aus1.torproject.org/torbrowser/update_3/release/download-windows-x86_64.json';
+
+async function currentTorVersion() {
+  if (process.env.TOR_VERSION) return checkTorVersion(process.env.TOR_VERSION.trim());
+  const body = await new Promise((resolve, reject) => {
+    https.get(TOR_RELEASE_INFO, { headers: { 'User-Agent': 'redlynx-engines' } }, (res) => {
+      if (res.statusCode !== 200) {
+        res.resume();
+        return reject(new Error('HTTP ' + res.statusCode + ' for ' + TOR_RELEASE_INFO));
+      }
+      let b = '';
+      res.on('data', (c) => { b += c; });
+      res.on('end', () => resolve(b));
+    }).on('error', reject);
+  });
+  let version;
+  try {
+    version = JSON.parse(body).version;
+  } catch (e) {
+    throw new Error('could not read the Tor release info: ' + e.message);
+  }
+  return checkTorVersion(version);
+}
+
+// The version goes straight into a URL path, so accept a version number and
+// nothing else.
+function checkTorVersion(version) {
+  if (typeof version !== 'string' || !/^\d+(\.\d+)+$/.test(version)) {
+    throw new Error('not a Tor version number: ' + JSON.stringify(version));
+  }
+  return version;
+}
 
 function get(url, dest, redirects = 0) {
   return new Promise((resolve, reject) => {
@@ -146,6 +182,7 @@ async function main() {
   // ── Tor ──
   if (have(path.join('tor', 'tor', 'tor.exe'))) console.log('  tor already present');
   else {
+    const TOR_VERSION = await currentTorVersion();
     const name = 'tor-expert-bundle-windows-x86_64-' + TOR_VERSION + '.tar.gz';
     const url = 'https://www.torproject.org/dist/torbrowser/' + TOR_VERSION + '/' + name;
     console.log('  tor ' + TOR_VERSION);
@@ -175,7 +212,11 @@ async function main() {
     const dest = path.join(DIR, 'tor');
     fs.rmSync(dest, { recursive: true, force: true });
     fs.mkdirSync(dest, { recursive: true });
-    execFileSync('tar', ['-xzf', tgz, '-C', dest], { stdio: 'ignore' });
+    // Windows' own tar (bsdtar). A GNU tar earlier on PATH — Git Bash puts one
+    // there — reads "D:\..." as a remote host and fails.
+    const winTar = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
+    const tar = process.platform === 'win32' && fs.existsSync(winTar) ? winTar : 'tar';
+    execFileSync(tar, ['-xzf', tgz, '-C', dest], { stdio: 'ignore' });
     fs.rmSync(path.join(dest, 'docs'), { recursive: true, force: true });
     fs.rmSync(tgz, { force: true });
     fs.rmSync(tgz + '.asc', { force: true });
