@@ -1,6 +1,6 @@
 {
   "name": "redlynx",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A stronger browser — built-in media downloader, ad/tracker blocking, power tabs, privacy by default.",
   "main": "src/main.js",
   "scripts": {
@@ -20,7 +20,7 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^43.4.1",
+    "electron": "^45.2.3",
     "electron-builder": "^26.15.3"
   },
   "dependencies": {
